@@ -7,7 +7,7 @@ Runs MEGAN biogenic emissions calculations across three options on a global 4°x
 2. Native MEGAN CECE option
 3. MEGAN3 CECE option
 
-Generates spatial maps and difference plots saved to docs/megan_hemco_parity_comparison.png.
+Generates detailed spatial maps, absolute differences, and percentage difference plots saved to docs/.
 """
 
 import numpy as np
@@ -43,13 +43,8 @@ def run_global_4x5_comparison():
     lon_grid, lat_grid = np.meshgrid(lons, lats)
 
     # Realistic synthetic meteorological fields for 4°x5° global grid
-    # Temperature varies with latitude and longitude (solar noon factor)
     temp = 280.0 + 25.0 * np.cos(np.radians(lat_grid)) + 5.0 * np.sin(np.radians(lon_grid))
-
-    # LAI varies by latitude (tropical rainforests high, poles zero)
     lai = np.maximum(0.0, 5.0 * np.cos(np.radians(lat_grid) * 1.5) * (np.abs(lat_grid) < 60))
-
-    # Solar cosine
     suncos = np.maximum(0.0, np.cos(np.radians(lat_grid)) * np.cos(np.radians(lon_grid)))
 
     pardr = 200.0 * suncos
@@ -82,25 +77,25 @@ def run_global_4x5_comparison():
     # Option 3: CECE MEGAN3 (Multi-species / Canopy Model)
     cece_megan3_isoprene = norm_fac * 1.0e-9 * g_lai * g_par * g_t_ld * g_co2 * 0.9996 * (lai > 0) * (suncos > 0)
 
-    # Plotting
+    os.makedirs('docs', exist_ok=True)
+
+    # -------------------------------------------------------------------------
+    # Plot 1: Standard 2x2 Parity & Difference Overview
+    # -------------------------------------------------------------------------
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
 
-    # 1. HEMCO 3.12.1 MEGAN Stateless Reference
     im0 = axes[0, 0].pcolormesh(lon_grid, lat_grid, hemco_isoprene * 1e9, cmap='YlGn', vmin=0, vmax=2.5)
-    axes[0, 0].set_title('HEMCO 3.12.1 MEGAN Stateless Reference (Isoprene, nmol/m²/s)')
+    axes[0, 0].set_title('HEMCO 3.12.1 MEGAN Stateless Reference (nmol/m²/s)')
     fig.colorbar(im0, ax=axes[0, 0])
 
-    # 2. CECE MEGAN Native C++
     im1 = axes[0, 1].pcolormesh(lon_grid, lat_grid, cece_megan_isoprene * 1e9, cmap='YlGn', vmin=0, vmax=2.5)
-    axes[0, 1].set_title('CECE MEGAN Native C++ Option (Isoprene, nmol/m²/s)')
+    axes[0, 1].set_title('CECE MEGAN Native C++ Option (nmol/m²/s)')
     fig.colorbar(im1, ax=axes[0, 1])
 
-    # 3. CECE MEGAN3 C++
     im2 = axes[1, 0].pcolormesh(lon_grid, lat_grid, cece_megan3_isoprene * 1e9, cmap='YlGn', vmin=0, vmax=2.5)
-    axes[1, 0].set_title('CECE MEGAN3 Option (Isoprene, nmol/m²/s)')
+    axes[1, 0].set_title('CECE MEGAN3 Option (nmol/m²/s)')
     fig.colorbar(im2, ax=axes[1, 0])
 
-    # 4. Difference: CECE MEGAN vs HEMCO 3.12.1 Reference
     diff = (cece_megan_isoprene - hemco_isoprene) * 1e9
     im3 = axes[1, 1].pcolormesh(lon_grid, lat_grid, diff, cmap='coolwarm')
     axes[1, 1].set_title('Difference (CECE MEGAN - HEMCO 3.12.1 Ref, nmol/m²/s)')
@@ -111,11 +106,61 @@ def run_global_4x5_comparison():
         ax.set_ylabel('Latitude (°)')
 
     plt.tight_layout()
-    output_path = 'docs/megan_hemco_parity_comparison.png'
-    os.makedirs('docs', exist_ok=True)
-    plt.savefig(output_path, dpi=150)
+    output_path1 = 'docs/megan_hemco_parity_comparison.png'
+    plt.savefig(output_path1, dpi=150)
     plt.close()
-    print(f"Generated analysis plot at {output_path}")
+    print(f"Generated analysis plot at {output_path1}")
+
+    # -------------------------------------------------------------------------
+    # Plot 2: Detailed Global Intercomparison & Percentage Differences (3x2 grid)
+    # -------------------------------------------------------------------------
+    fig2, axes2 = plt.subplots(3, 2, figsize=(16, 12))
+
+    # Row 0: Absolute Isoprene Emissions
+    im_a = axes2[0, 0].pcolormesh(lon_grid, lat_grid, hemco_isoprene * 1e9, cmap='viridis', vmin=0, vmax=2.5)
+    axes2[0, 0].set_title('(a) HEMCO 3.12.1 Stateless Ref (Isoprene, nmol/m²/s)')
+    fig2.colorbar(im_a, ax=axes2[0, 0])
+
+    im_b = axes2[0, 1].pcolormesh(lon_grid, lat_grid, cece_megan3_isoprene * 1e9, cmap='viridis', vmin=0, vmax=2.5)
+    axes2[0, 1].set_title('(b) CECE MEGAN3 Option (Isoprene, nmol/m²/s)')
+    fig2.colorbar(im_b, ax=axes2[0, 1])
+
+    # Row 1: Absolute Differences
+    diff_megan = (cece_megan_isoprene - hemco_isoprene) * 1e9
+    im_c = axes2[1, 0].pcolormesh(lon_grid, lat_grid, diff_megan, cmap='RdBu_r')
+    axes2[1, 0].set_title('(c) Absolute Diff: MEGAN C++ - HEMCO 3.12.1 Ref (nmol/m²/s)')
+    fig2.colorbar(im_c, ax=axes2[1, 0])
+
+    diff_megan3 = (cece_megan3_isoprene - hemco_isoprene) * 1e9
+    im_d = axes2[1, 1].pcolormesh(lon_grid, lat_grid, diff_megan3, cmap='RdBu_r')
+    axes2[1, 1].set_title('(d) Absolute Diff: MEGAN3 C++ - HEMCO 3.12.1 Ref (nmol/m²/s)')
+    fig2.colorbar(im_d, ax=axes2[1, 1])
+
+    # Row 2: Percentage Differences (% relative to HEMCO 3.12.1)
+    mask_active = hemco_isoprene > 1e-12
+    pct_diff_megan = np.zeros_like(hemco_isoprene)
+    pct_diff_megan[mask_active] = ((cece_megan_isoprene[mask_active] - hemco_isoprene[mask_active]) / hemco_isoprene[mask_active]) * 100.0
+
+    pct_diff_megan3 = np.zeros_like(hemco_isoprene)
+    pct_diff_megan3[mask_active] = ((cece_megan3_isoprene[mask_active] - hemco_isoprene[mask_active]) / hemco_isoprene[mask_active]) * 100.0
+
+    im_e = axes2[2, 0].pcolormesh(lon_grid, lat_grid, pct_diff_megan, cmap='PuOr', vmin=-50, vmax=50)
+    axes2[2, 0].set_title('(e) Relative Diff: (MEGAN - Ref) / Ref (%)')
+    fig2.colorbar(im_e, ax=axes2[2, 0])
+
+    im_f = axes2[2, 1].pcolormesh(lon_grid, lat_grid, pct_diff_megan3, cmap='PuOr', vmin=-50, vmax=50)
+    axes2[2, 1].set_title('(f) Relative Diff: (MEGAN3 - Ref) / Ref (%)')
+    fig2.colorbar(im_f, ax=axes2[2, 1])
+
+    for ax in axes2.flat:
+        ax.set_xlabel('Longitude (°)')
+        ax.set_ylabel('Latitude (°)')
+
+    plt.tight_layout()
+    output_path2 = 'docs/megan_hemco_global_intercomparison.png'
+    plt.savefig(output_path2, dpi=150)
+    plt.close()
+    print(f"Generated additional analysis plot at {output_path2}")
 
 if __name__ == '__main__':
     run_global_4x5_comparison()
