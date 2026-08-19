@@ -169,3 +169,28 @@ species:
       category: "anthropogenic"
       operation: "add"
 ```
+
+---
+
+## Example 7: MEGAN Biogenic HEMCO 3.12.1 Stateless Mode
+**Scenario:** Reproducing HEMCO 3.12.1 MEGAN biogenic emissions across the 24-biome contract on global 4°×5° grid.
+
+### [Before] HEMCO
+```fortran
+# ExtNr ExtName on/off Species
+107    MEGAN   : on   ISOP
+```
+
+### [After] CECE
+```yaml
+physics_schemes:
+  - name: "megan"
+    options:
+      calculation_mode: "hemco_3_12_1_stateless"
+      stateless_mode: true
+```
+
+Run parity validation:
+```bash
+./build/hemco_comparison_driver
+```

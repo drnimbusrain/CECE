@@ -26,6 +26,8 @@ The original scheme computes isoprene emissions using activity factors for LAI, 
 physics_schemes:
   - name: megan
     options:
+      calculation_mode: hemco_3_12_1_stateless
+      stateless_mode: true
       beta: 0.13
       ldf: 1.0
       aef: 1.0e-9
@@ -49,6 +51,44 @@ physics_schemes:
 | Field Name | Units | Description |
 | --- | --- | --- |
 | `isoprene_emissions` | kg/m²/s | Isoprene emission flux |
+
+---
+
+## HEMCO 3.12.1 Stateless Mode & 24-Biome Contract
+
+CECE reproduces the exact HEMCO 3.12.1 MEGAN biogenic stateless calculation across all 24 Olson/MEGAN biomes on global grids (e.g. 4°×5° / 72×46×1).
+
+### Configuration Options
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `calculation_mode` | string | `"default"` | Set to `"hemco_3_12_1_stateless"` to force HEMCO 3.12.1 effective stateless mode |
+| `stateless_mode` | bool | `false` | When true, disables historical state dependency ($\gamma_{age} = 1.0$) |
+| `hemco_effective` | bool | `false` | Alias for `stateless_mode` |
+
+### 24-Biome Contract
+
+When `biome_fractions` (3D view `[nx, ny, 24]`) or `biome_emission_factors` is supplied in the import state, CECE evaluates cell-effective emission factors across all 24 Olson biomes:
+
+$$AEF_{effective}(i,j) = \sum_{b=1}^{24} \text{biome\_fractions}(i,j,b) \cdot EF_{biome}(b)$$
+
+### Running the Parity Tests
+
+1. **Standalone Comparison Driver**:
+```bash
+./build/hemco_comparison_driver
+```
+Executes CO stacking, DMS physics, and the complete 24-biome HEMCO 3.12.1 MEGAN biogenic reference on the exact global 4°×5° grid ($72 \times 46 \times 1$).
+
+2. **GoogleTest Parity Suite**:
+```bash
+./build/test_hemco_parity --gtest_filter="*Megan*"
+```
+
+3. **Full CTest Suite**:
+```bash
+cd build && ctest -R "hemco|megan" --output-on-failure
+```
 
 ---
 
