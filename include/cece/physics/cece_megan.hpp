@@ -5,7 +5,9 @@
 #include <algorithm>
 #include <cmath>
 #include <numbers>
+#include <string>
 
+#include "cece/physics/hemco_megan_stateless.hpp"
 #include "cece/physics_scheme.hpp"
 
 namespace cece {
@@ -135,6 +137,14 @@ double get_gamma_co2(double co2a, double c1, double c2, bool use_wilkinson) {
 /**
  * @class MeganScheme
  * @brief Native C++ implementation of the MEGAN biogenics emission scheme.
+ *
+ * Supported `megan_method` values:
+ *   - `"native"` (default) — fully configurable MEGAN2.1 isoprene calculation.
+ *   - `"hemco_3_12_1"` — source-pinned HEMCO 3.12.1 stateless cell arithmetic
+ *     using frozen constants from hemco_megan_stateless.hpp.  All native-mode
+ *     tuning parameters are ignored; the CO₂ concentration, 15-day temperature
+ *     average, and 24-hr PAR average can be overridden via `hemco_co2_ppm`,
+ *     `hemco_t_avg_15_k`, and `hemco_par_avg_umol` config keys.
  */
 class MeganScheme : public BasePhysicsScheme {
    public:
@@ -145,13 +155,21 @@ class MeganScheme : public BasePhysicsScheme {
     void Run(CeceImportState& import_state, CeceExportState& export_state) override;
 
    private:
+    // ---- Emission method selection ----
+    std::string megan_method_ = "native";  // "native" or "hemco_3_12_1"
+
+    // ---- HEMCO 3.12.1 parity-mode overrides ----
+    double hemco_co2_ppm_      = 390.0;                                  ///< pinned reference CO₂ [ppm]
+    double hemco_par_avg_umol_ = hemco_megan::v3_12_1::kParAvgUmol;     ///< 400 µmol/m²/s
+    double hemco_t_avg_15_k_   = hemco_megan::v3_12_1::kTAvg15;         ///< 297 K
+
+    // ---- Native-mode parameters (ignored in hemco_3_12_1 mode) ----
     double gamma_co2_ = 0.0;
     double beta_ = 0.13;
     double ct1_ = 95.0;
     double ceo_ = 2.0;
     double ldf_ = 1.0;
 
-    // Configurable list of species and their emission factors (AEF)
     std::string species_name_ = "isoprene";
     std::string export_field_name_ = "isoprene_emissions";
     double aef_ = 1.0e-9;
@@ -174,10 +192,7 @@ class MeganScheme : public BasePhysicsScheme {
     double gamma_co2_coeff_1_ = 8.9406;
     double gamma_co2_coeff_2_ = 0.0024;
 
-    // Additional parameters for gamma_age
     double anew_ = 1.0;
-
-    // Additional parameter for gamma_sm
     bool is_ald2_or_eoh_ = false;
     double agro_ = 1.0;
     double amat_ = 1.0;

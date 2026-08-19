@@ -37,6 +37,45 @@ static PhysicsRegistration<MeganScheme> register_scheme("megan");
 void MeganScheme::Initialize(const YAML::Node& config, CeceDiagnosticManager* diag_manager) {
     BasePhysicsScheme::Initialize(config, diag_manager);
 
+    // ---- Select emission method ----
+    megan_method_ = "native";
+    if (config["megan_method"]) {
+        megan_method_ = config["megan_method"].as<std::string>();
+    }
+    if (megan_method_ != "native" && megan_method_ != "hemco_3_12_1") {
+        std::cout << "MeganScheme: WARNING - Unknown megan_method '" << megan_method_
+                  << "', falling back to 'native'\n";
+        megan_method_ = "native";
+    }
+
+    // ---- HEMCO 3.12.1 parity-mode parameters ----
+    if (megan_method_ == "hemco_3_12_1") {
+        // Defaults from the pinned header; allow user override for sensitivity studies.
+        hemco_co2_ppm_     = 390.0;
+        hemco_par_avg_umol_ = hemco_megan::v3_12_1::kParAvgUmol;
+        hemco_t_avg_15_k_   = hemco_megan::v3_12_1::kTAvg15;
+        if (config["hemco_co2_ppm"])     hemco_co2_ppm_      = config["hemco_co2_ppm"].as<double>();
+        if (config["co2_concentration"]) hemco_co2_ppm_      = config["co2_concentration"].as<double>();
+        if (config["hemco_par_avg_umol"]) hemco_par_avg_umol_ = config["hemco_par_avg_umol"].as<double>();
+        if (config["hemco_t_avg_15_k"])   hemco_t_avg_15_k_   = config["hemco_t_avg_15_k"].as<double>();
+
+        // AEF and export field still read from config in hemco_3_12_1 mode.
+        aef_ = 1.0e-9;
+        if (config["aef"]) aef_ = config["aef"].as<double>();
+        if (config["aef_isop"]) aef_ = config["aef_isop"].as<double>();
+
+        species_name_     = "isoprene";
+        export_field_name_ = "isoprene_emissions";
+        if (config["species_name"])      species_name_      = config["species_name"].as<std::string>();
+        if (config["export_field_name"]) export_field_name_ = config["export_field_name"].as<std::string>();
+
+        std::cout << "MeganScheme: hemco_3_12_1 mode — CO2=" << hemco_co2_ppm_
+                  << " ppm, PAR_AVG=" << hemco_par_avg_umol_
+                  << " µmol/m²/s, T_AVG_15=" << hemco_t_avg_15_k_ << " K\n";
+        return;
+    }
+
+    // ---- Native-mode parameters ----
     gamma_co2_coeff_1_ = 8.9406;
     gamma_co2_coeff_2_ = 0.0024;
     if (config["gamma_co2_coeff_1"]) gamma_co2_coeff_1_ = config["gamma_co2_coeff_1"].as<double>();
@@ -125,8 +164,7 @@ void MeganScheme::Run(CeceImportState& import_state, CeceExportState& export_sta
     auto pardf = ResolveImport("par_diffuse", import_state);
     auto suncos = ResolveImport("solar_cosine", import_state);
 
-    // Attempt to read new required fields for gamma_age and gamma_sm
-    auto pmlai = ResolveImport("leaf_area_index_prev", import_state);
+    auto pmlai    = ResolveImport("leaf_area_index_prev", import_state);
     auto gwetroot = ResolveImport("soil_moisture_root", import_state);
 
     if (temp.data() == nullptr || emissions_out.data() == nullptr || lai.data() == nullptr || pardr.data() == nullptr || pardf.data() == nullptr ||
@@ -137,6 +175,52 @@ void MeganScheme::Run(CeceImportState& import_state, CeceExportState& export_sta
     int nx = static_cast<int>(emissions_out.extent(0));
     int ny = static_cast<int>(emissions_out.extent(1));
 
+    // ============================================================
+    // HEMCO 3.12.1 stateless parity path
+    // ============================================================
+    if (megan_method_ == "hemco_3_12_1") {
+        const double h_aef          = aef_;
+        const double h_co2          = hemco_co2_ppm_;
+        const double h_par_avg_umol = hemco_par_avg_umol_;
+        const double h_t_avg_15     = hemco_t_avg_15_k_;
+        const bool   has_pmlai_h    = (pmlai.data() != nullptr);
+
+        Kokkos::parallel_for(
+            "MeganKernel_HEMCO3121",
+            Kokkos::MDRangePolicy<Kokkos::DefaultExecutionSpace, Kokkos::Rank<2>>({0, 0}, {nx, ny}),
+            KOKKOS_LAMBDA(int i, int j) {
+                using namespace cece::hemco_megan::v3_12_1;
+                const double T     = temp(i, j, 0);
+                const double L     = lai(i, j, 0);
+                if (L <= 0.0) return;
+
+                const double Lprev = has_pmlai_h ? pmlai(i, j, 0) : L;
+                const double sc    = suncos(i, j, 0);
+                const double qd    = pardr(i, j, 0);
+                const double qi    = pardf(i, j, 0);
+
+                MeganInputs in;
+                in.T_K          = T;
+                in.lai          = L;
+                in.lai_prev     = Lprev;
+                in.pardr_Wm2    = qd;
+                in.pardf_Wm2    = qi;
+                in.suncos       = sc;
+                in.co2_ppm      = h_co2;
+                in.par_avg_umol = h_par_avg_umol;
+                in.T_avg_15_K   = h_t_avg_15;
+                in.doy          = kReferenceDoy;
+
+                emissions_out(i, j, 0) += h_aef * IsopreneEmissionFactor(in);
+            });
+        Kokkos::fence();
+        MarkModified(export_field_name_, export_state);
+        return;
+    }
+
+    // ============================================================
+    // Native-mode kernel (original)
+    // ============================================================
     double beta = beta_, ct1 = ct1_, ceo = ceo_, ldf = ldf_, aef = aef_;
     double lai_c1 = lai_coeff_1_, lai_c2 = lai_coeff_2_, std_t = standard_temp_;
     double R = gas_constant_, ct2 = ct2_const_;
@@ -149,7 +233,6 @@ void MeganScheme::Run(CeceImportState& import_state, CeceExportState& export_sta
     const double NORM_FAC = 1.0 / 1.0101081;
     double gamma_co2_const = gamma_co2_;
 
-    // Check if new optional fields exist, otherwise use fallbacks
     bool has_pmlai = (pmlai.data() != nullptr);
     bool has_gwetroot = (gwetroot.data() != nullptr);
 

@@ -4,10 +4,16 @@
 
 CECE provides two MEGAN biogenic emission schemes:
 
-- **`megan`** — Single-species isoprene scheme (original, ported from HEMCO)
-- **`megan3`** — Full MEGAN3 multi-species, multi-class emission system with 19 emission classes, 5-layer canopy model, and chemical mechanism speciation
+- **`megan`** — Single-species isoprene scheme (original, ported from HEMCO).  Supports
+  two emission methods:
+  - `"native"` (default) — fully configurable MEGAN2.1 isoprene calculation.
+  - `"hemco_3_12_1"` — source-pinned HEMCO 3.12.1 stateless parity reference.
+- **`megan3`** — Full MEGAN3 multi-species, multi-class emission system with 19 emission classes, 5-layer canopy model, and chemical mechanism speciation.
 
 Both schemes coexist and can be selected independently via the YAML configuration.
+
+See [docs/hemco_megan_parity.md](hemco_megan_parity.md) for full instructions on
+running the HEMCO 3.12.1 parity test.
 
 ---
 
@@ -20,17 +26,54 @@ The original scheme computes isoprene emissions using activity factors for LAI, 
 - Native C++: `"megan"`
 - Fortran bridge: `"megan_fortran"`
 
-### Configuration
+### Emission methods
+
+| `megan_method` value | Description |
+|---|---|
+| `"native"` (default) | Fully configurable MEGAN2.1 isoprene (all gamma coefficients tunable) |
+| `"hemco_3_12_1"` | Source-pinned HEMCO 3.12.1 stateless parity — frozen PTOA, PAR_AVG µmol convention, CO₂ |
+
+### Configuration (native mode)
 
 ```yaml
 physics_schemes:
   - name: megan
     options:
+      megan_method: native   # optional — "native" is the default
       beta: 0.13
       ldf: 1.0
       aef: 1.0e-9
       co2_concentration: 400.0
 ```
+
+### Configuration (HEMCO 3.12.1 parity mode)
+
+```yaml
+physics_schemes:
+  - name: megan
+    language: cpp
+    options:
+      megan_method: hemco_3_12_1   # Source-pinned HEMCO 3.12.1 stateless path
+      aef: 1.0e-9                  # Isoprene AEF [kg m⁻² s⁻¹]
+      hemco_co2_ppm: 390.0         # CO₂ [ppm] (default: 390)
+      hemco_par_avg_umol: 400.0    # 24-hr PAR average [µmol m⁻² s⁻¹] (default: 400)
+      hemco_t_avg_15_k: 297.0      # 15-day T average [K] (default: 297)
+    input_mapping:
+      temperature:          TSFC
+      leaf_area_index:      LAI
+      leaf_area_index_prev: LAI_PREV
+      par_direct:           PARDR
+      par_diffuse:          PARDF
+      solar_cosine:         SUNCOS
+```
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `megan_method` | string | `"native"` | `"native"` or `"hemco_3_12_1"` |
+| `aef` | double | `1.0e-9` | AEF [kg m⁻² s⁻¹] |
+| `hemco_co2_ppm` | double | `390.0` | CO₂ concentration [ppm] (hemco_3_12_1 only) |
+| `hemco_par_avg_umol` | double | `400.0` | 24-hr PAR average [µmol m⁻² s⁻¹] (hemco_3_12_1 only) |
+| `hemco_t_avg_15_k` | double | `297.0` | 15-day T average [K] (hemco_3_12_1 only) |
 
 ### Import Fields
 
