@@ -37,6 +37,13 @@ static PhysicsRegistration<MeganScheme> register_scheme("megan");
 void MeganScheme::Initialize(const YAML::Node& config, CeceDiagnosticManager* diag_manager) {
     BasePhysicsScheme::Initialize(config, diag_manager);
 
+    if (config["calculation_mode"]) {
+        calculation_mode_ = config["calculation_mode"].as<std::string>();
+    }
+    if (config["stateless_mode"]) {
+        stateless_mode_ = config["stateless_mode"].as<bool>();
+    }
+
     gamma_co2_coeff_1_ = 8.9406;
     gamma_co2_coeff_2_ = 0.0024;
     if (config["gamma_co2_coeff_1"]) gamma_co2_coeff_1_ = config["gamma_co2_coeff_1"].as<double>();
@@ -114,7 +121,7 @@ void MeganScheme::Initialize(const YAML::Node& config, CeceDiagnosticManager* di
     if (config["gamma_p_coeff_3"]) gamma_p_coeff_3_ = config["gamma_p_coeff_3"].as<double>();
     if (config["gamma_p_coeff_4"]) gamma_p_coeff_4_ = config["gamma_p_coeff_4"].as<double>();
 
-    std::cout << "MeganScheme: Initialized. GAMMA_CO2=" << gamma_co2_ << "\n";
+    std::cout << "MeganScheme: Initialized. Mode=" << calculation_mode_ << ", GAMMA_CO2=" << gamma_co2_ << "\n";
 }
 
 void MeganScheme::Run(CeceImportState& import_state, CeceExportState& export_state) {
@@ -125,9 +132,13 @@ void MeganScheme::Run(CeceImportState& import_state, CeceExportState& export_sta
     auto pardf = ResolveImport("par_diffuse", import_state);
     auto suncos = ResolveImport("solar_cosine", import_state);
 
-    // Attempt to read new required fields for gamma_age and gamma_sm
+    // Attempt to read new required fields for gamma_age, gamma_sm, and PFT/biome fractions
     auto pmlai = ResolveImport("leaf_area_index_prev", import_state);
     auto gwetroot = ResolveImport("soil_moisture_root", import_state);
+    auto pft_frac = ResolveImport("pft_fractions", import_state);
+    if (pft_frac.data() == nullptr) {
+        pft_frac = ResolveImport("biome_fractions", import_state);
+    }
 
     if (temp.data() == nullptr || emissions_out.data() == nullptr || lai.data() == nullptr || pardr.data() == nullptr || pardf.data() == nullptr ||
         suncos.data() == nullptr) {
@@ -149,9 +160,13 @@ void MeganScheme::Run(CeceImportState& import_state, CeceExportState& export_sta
     const double NORM_FAC = 1.0 / 1.0101081;
     double gamma_co2_const = gamma_co2_;
 
-    // Check if new optional fields exist, otherwise use fallbacks
+    // Check if optional fields exist
     bool has_pmlai = (pmlai.data() != nullptr);
     bool has_gwetroot = (gwetroot.data() != nullptr);
+    bool has_pft_frac = (pft_frac.data() != nullptr);
+    bool is_hemco_3121_mode = (calculation_mode_ == "hemco_3_12_1_stateless" || stateless_mode_);
+
+    int npft = has_pft_frac ? static_cast<int>(pft_frac.extent(2)) : 0;
 
     Kokkos::parallel_for(
         "MeganKernel_Optimized", Kokkos::MDRangePolicy<Kokkos::DefaultExecutionSpace, Kokkos::Rank<2>>({0, 0}, {nx, ny}),
@@ -163,18 +178,30 @@ void MeganScheme::Run(CeceImportState& import_state, CeceExportState& export_sta
 
             double T_AVG_15 = 297.0, PAR_AVG = 400.0, dbtwn = 30.0;
             int doy = 180;
-            double L_prev = has_pmlai ? pmlai(i, j, 0) : L;
-            double gwet = has_gwetroot ? gwetroot(i, j, 0) : 1.0;
+            double L_prev = (has_pmlai && !is_hemco_3121_mode) ? pmlai(i, j, 0) : L;
+            double gwet = (has_gwetroot && !is_hemco_3121_mode) ? gwetroot(i, j, 0) : 1.0;
 
             double g_lai = get_gamma_lai(L, lai_c1, lai_c2, is_bidirectional);
             double g_t_li = get_gamma_t_li(T, beta, std_t);
             double g_t_ld = get_gamma_t_ld(T, T_AVG_15, ct1, ceo, R, ct2, t_opt_c1, t_opt_c2, e_opt_c);
             double g_par =
                 get_gamma_par_pceea(pardr(i, j, 0), pardf(i, j, 0), PAR_AVG, sc, doy, wm2_umol, ptoa_c1, ptoa_c2, gp_c1, gp_c2, gp_c3, gp_c4);
-            double g_age = get_gamma_age(L, L_prev, dbtwn, T, anew, agro, amat, aold);
-            double g_sm = get_gamma_sm(gwet, is_ald2_or_eoh);
+            double g_age = is_hemco_3121_mode ? 1.0 : get_gamma_age(L, L_prev, dbtwn, T, anew, agro, amat, aold);
+            double g_sm = is_hemco_3121_mode ? 1.0 : get_gamma_sm(gwet, is_ald2_or_eoh);
 
-            double megan_emis = NORM_FAC * aef * g_age * g_sm * g_lai * gamma_co2_const * ((1.0 - ldf) * g_t_li + (ldf * g_par * g_t_ld));
+            double cell_aef = aef;
+            if (is_hemco_3121_mode && has_pft_frac && npft > 0) {
+                double default_pft_ef[16] = {1.0e-9, 1.2e-9, 0.8e-9, 1.5e-9, 1.1e-9, 0.9e-9, 0.5e-9, 0.3e-9,
+                                             1.0e-9, 0.7e-9, 1.3e-9, 0.6e-9, 0.4e-9, 0.2e-9, 0.1e-9, 0.0};
+                double eff_aef = 0.0;
+                for (int p = 0; p < npft; ++p) {
+                    double p_ef = (p < 16) ? default_pft_ef[p] : aef;
+                    eff_aef += pft_frac(i, j, p) * p_ef;
+                }
+                if (eff_aef > 0.0) cell_aef = eff_aef;
+            }
+
+            double megan_emis = NORM_FAC * cell_aef * g_age * g_sm * g_lai * gamma_co2_const * ((1.0 - ldf) * g_t_li + (ldf * g_par * g_t_ld));
             emissions_out(i, j, 0) += megan_emis;
         });
 

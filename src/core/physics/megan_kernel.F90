@@ -92,5 +92,79 @@ contains
         end do
     end subroutine run_megan_fortran
 
+    subroutine run_megan_hemco3121_stateless_fortran(temp_ptr, lai_ptr, pardr_ptr, pardf_ptr, &
+                                                      suncos_ptr, pft_frac_ptr, pft_ef_ptr, &
+                                                      isop_ptr, nx, ny, nz, npft) &
+        bind(c, name="run_megan_hemco3121_stateless_fortran")
+        type(c_ptr), value :: temp_ptr, lai_ptr, pardr_ptr, pardf_ptr, suncos_ptr, isop_ptr
+        type(c_ptr), value :: pft_frac_ptr, pft_ef_ptr
+        integer(c_int), value :: nx, ny, nz, npft
+
+        real(c_double), pointer :: temp(:,:,:), lai(:,:,:), pardr(:,:,:), pardf(:,:,:), suncos(:,:,:), isop(:,:,:)
+        real(c_double), pointer :: pft_frac(:,:,:), pft_ef(:)
+        real(c_double) :: t_val, l_val, sc_val, g_lai, g_t_li, g_t_ld, g_par, g_co2, megan_emis, aef_eff
+        integer :: i, j, k, p
+        logical :: has_frac, has_ef
+
+        real(c_double), parameter :: DEFAULT_PFT_EF(16) = (/ &
+            1.0d-9, 1.2d-9, 0.8d-9, 1.5d-9, 1.1d-9, 0.9d-9, 0.5d-9, 0.3d-9, &
+            1.0d-9, 0.7d-9, 1.3d-9, 0.6d-9, 0.4d-9, 0.2d-9, 0.1d-9, 0.0d0 /)
+
+        call c_f_pointer(temp_ptr, temp, [int(nx), int(ny), int(nz)])
+        call c_f_pointer(lai_ptr, lai, [int(nx), int(ny), int(nz)])
+        call c_f_pointer(pardr_ptr, pardr, [int(nx), int(ny), int(nz)])
+        call c_f_pointer(pardf_ptr, pardf, [int(nx), int(ny), int(nz)])
+        call c_f_pointer(suncos_ptr, suncos, [int(nx), int(ny), int(nz)])
+        call c_f_pointer(isop_ptr, isop, [int(nx), int(ny), int(nz)])
+
+        has_frac = c_associated(pft_frac_ptr)
+        has_ef = c_associated(pft_ef_ptr)
+
+        if (has_frac) then
+            call c_f_pointer(pft_frac_ptr, pft_frac, [int(nx), int(ny), int(npft)])
+        end if
+        if (has_ef) then
+            call c_f_pointer(pft_ef_ptr, pft_ef, [int(npft)])
+        end if
+
+        do k = 1, nz
+            if (k == 1) then
+                do j = 1, ny
+                    do i = 1, nx
+                        t_val = temp(i,j,k)
+                        l_val = lai(i,j,k)
+                        sc_val = suncos(i,j,k)
+
+                        if (l_val > 0.0d0) then
+                            ! Compute effective emission factor across PFTs & species classes
+                            aef_eff = 0.0d0
+                            if (has_frac) then
+                                do p = 1, int(npft)
+                                    if (has_ef) then
+                                        aef_eff = aef_eff + pft_frac(i,j,p) * pft_ef(p)
+                                    else if (p <= 16) then
+                                        aef_eff = aef_eff + pft_frac(i,j,p) * DEFAULT_PFT_EF(p)
+                                    end if
+                                end do
+                            else
+                                aef_eff = 1.0d-9
+                            end if
+
+                            if (aef_eff <= 0.0d0) aef_eff = 1.0d-9
+
+                            g_lai = get_gamma_lai(l_val)
+                            g_t_li = get_gamma_t_li(t_val, 0.13d0)
+                            g_t_ld = get_gamma_t_ld(t_val, 297.0d0, 95.0d0, 2.0d0)
+                            g_par = get_gamma_par(pardr(i,j,k), pardf(i,j,k), 400.0d0, sc_val, 180)
+                            g_co2 = get_gamma_co2(400.0d0)
+
+                            megan_emis = (1.0d0 / 1.0101081d0) * aef_eff * g_lai * g_par * g_t_ld * g_co2
+                            isop(i,j,k) = isop(i,j,k) + megan_emis
+                        end if
+                    end do
+                end do
+            end if
+        end do
+    end subroutine run_megan_hemco3121_stateless_fortran
 
 end module megan_kernel_mod

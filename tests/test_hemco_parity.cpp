@@ -24,9 +24,14 @@
 
 #include "cece/cece_compute.hpp"
 #include "cece/cece_config.hpp"
+#include "cece/cece_physics_factory.hpp"
 #include "cece/cece_provenance.hpp"
 #include "cece/cece_stacking_engine.hpp"
 #include "cece/cece_state.hpp"
+#include "cece/physics/cece_megan.hpp"
+#ifdef CECE_HAS_FORTRAN
+#include "cece/physics/cece_megan_fortran.hpp"
+#endif
 
 namespace cece {
 
@@ -558,6 +563,91 @@ TEST_F(HemcoParityTest, ProvenanceTracking) {
 // ---------------------------------------------------------------------------
 // 8. Mass conservation across vertical distribution (Req 6.23)
 // ---------------------------------------------------------------------------
+
+TEST_F(HemcoParityTest, MeganStatelessGlobal4x5Parity) {
+    const int nx = 72;
+    const int ny = 46;
+    const int nz = 1;
+    const int npft = 16;
+
+    CeceImportState imp_cpp, imp_fort;
+    CeceExportState exp_cpp, exp_fort;
+
+    auto make_field_grid = [&](const std::string& name, double val) {
+        DualView3D dv(name, nx, ny, nz);
+        Kokkos::deep_copy(dv.view_host(), val);
+        dv.modify<Kokkos::HostSpace>();
+        dv.sync<Kokkos::DefaultExecutionSpace>();
+        return dv;
+    };
+
+    imp_cpp.fields["temperature"] = make_field_grid("t_cpp", 300.0);
+    imp_cpp.fields["leaf_area_index"] = make_field_grid("lai_cpp", 3.0);
+    imp_cpp.fields["par_direct"] = make_field_grid("pardr_cpp", 100.0);
+    imp_cpp.fields["par_diffuse"] = make_field_grid("pardf_cpp", 50.0);
+    imp_cpp.fields["solar_cosine"] = make_field_grid("sc_cpp", 0.8);
+
+    imp_fort.fields["temperature"] = make_field_grid("t_fort", 300.0);
+    imp_fort.fields["leaf_area_index"] = make_field_grid("lai_fort", 3.0);
+    imp_fort.fields["par_direct"] = make_field_grid("pardr_fort", 100.0);
+    imp_fort.fields["par_diffuse"] = make_field_grid("pardf_fort", 50.0);
+    imp_fort.fields["solar_cosine"] = make_field_grid("sc_fort", 0.8);
+
+    DualView3D dv_pft_cpp("pft_fractions", nx, ny, npft);
+    DualView3D dv_pft_fort("pft_fractions", nx, ny, npft);
+    auto h_pft_cpp = dv_pft_cpp.view_host();
+    auto h_pft_fort = dv_pft_fort.view_host();
+    for (int i = 0; i < nx; ++i) {
+        for (int j = 0; j < ny; ++j) {
+            for (int p = 0; p < npft; ++p) {
+                double val = (p == (i + j) % npft) ? 1.0 : 0.0;
+                h_pft_cpp(i, j, p) = val;
+                h_pft_fort(i, j, p) = val;
+            }
+        }
+    }
+    dv_pft_cpp.modify<Kokkos::HostSpace>();
+    dv_pft_cpp.sync<Kokkos::DefaultExecutionSpace>();
+    dv_pft_fort.modify<Kokkos::HostSpace>();
+    dv_pft_fort.sync<Kokkos::DefaultExecutionSpace>();
+
+    imp_cpp.fields["pft_fractions"] = dv_pft_cpp;
+    imp_fort.fields["pft_fractions"] = dv_pft_fort;
+
+    exp_cpp.fields["isoprene_emissions"] = make_field_grid("isop_cpp", 0.0);
+    exp_fort.fields["isoprene"] = make_field_grid("isop_fort", 0.0);
+
+    PhysicsSchemeConfig cfg;
+    cfg.name = "megan";
+    cfg.options = YAML::Load("calculation_mode: hemco_3_12_1_stateless\nstateless_mode: true");
+
+    MeganScheme megan_cpp;
+    megan_cpp.Initialize(cfg.options, nullptr);
+    megan_cpp.Run(imp_cpp, exp_cpp);
+
+    exp_cpp.fields["isoprene_emissions"].sync<Kokkos::HostSpace>();
+    auto res_cpp = exp_cpp.fields["isoprene_emissions"].view_host();
+
+#ifdef CECE_HAS_FORTRAN
+    MeganFortranScheme megan_fort;
+    megan_fort.Initialize(cfg.options, nullptr);
+    megan_fort.Run(imp_fort, exp_fort);
+
+    exp_fort.fields["isoprene"].sync<Kokkos::HostSpace>();
+    auto res_fort = exp_fort.fields["isoprene"].view_host();
+
+    for (int i = 0; i < nx; ++i) {
+        for (int j = 0; j < ny; ++j) {
+            double val_cpp = res_cpp(i, j, 0);
+            double val_fort = res_fort(i, j, 0);
+            double tol = std::max(std::abs(val_cpp) * 1e-6, 1e-15);
+            EXPECT_NEAR(val_cpp, val_fort, tol) << "MEGAN PFT 4x5 parity mismatch at (" << i << "," << j << ")";
+        }
+    }
+#else
+    EXPECT_GT(res_cpp(0, 0, 0), 0.0);
+#endif
+}
 
 TEST_F(HemcoParityTest, MassConservationRange) {
     const int nz = 10;

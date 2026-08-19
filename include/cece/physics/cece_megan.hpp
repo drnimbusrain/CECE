@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <numbers>
+#include <string>
 
 #include "cece/physics_scheme.hpp"
 
@@ -145,6 +146,9 @@ class MeganScheme : public BasePhysicsScheme {
     void Run(CeceImportState& import_state, CeceExportState& export_state) override;
 
    private:
+    std::string calculation_mode_ = "default";
+    bool stateless_mode_ = false;
+
     double gamma_co2_ = 0.0;
     double beta_ = 0.13;
     double ct1_ = 95.0;

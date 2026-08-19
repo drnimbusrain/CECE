@@ -65,6 +65,10 @@ void Megan3Scheme::Initialize(const YAML::Node& config, CeceDiagnosticManager* d
     // Call base class to parse input_mapping, output_mapping, diagnostics
     BasePhysicsScheme::Initialize(config, diag_manager);
 
+    if (config["calculation_mode"]) {
+        calculation_mode_ = config["calculation_mode"].as<std::string>();
+    }
+
     // ---- Load speciation configuration ----
     std::string mechanism_path = "data/speciation/spc_cb6.yaml";
     std::string speciation_path = "data/speciation/map_cb6.yaml";
@@ -124,7 +128,7 @@ void Megan3Scheme::Initialize(const YAML::Node& config, CeceDiagnosticManager* d
     }
 
     std::cout << "Megan3Scheme: Initialized with " << NUM_CLASSES << " emission classes, " << export_field_names_.size()
-              << " mechanism species output fields\n";
+              << " mechanism species output fields. Calculation Mode=" << calculation_mode_ << "\n";
 }
 
 // ============================================================================
@@ -251,9 +255,10 @@ void Megan3Scheme::Run(CeceImportState& import_state, CeceExportState& export_st
     constexpr double GP_C4 = 0.9;
     constexpr int NO_CLASS_IDX = static_cast<int>(EmissionClass::NO);
 
-    bool has_lai_prev = (lai_prev.data() != nullptr);
-    bool has_soil_moist = (soil_moisture.data() != nullptr);
-    bool has_wind = (wind_speed.data() != nullptr);
+    bool is_hemco_3121_mode = (calculation_mode_ == "hemco_3_12_1_stateless");
+    bool has_lai_prev = (lai_prev.data() != nullptr) && !is_hemco_3121_mode;
+    bool has_soil_moist = (soil_moisture.data() != nullptr) && !is_hemco_3121_mode;
+    bool has_wind = (wind_speed.data() != nullptr) && !is_hemco_3121_mode;
 
     auto d_class_totals = class_totals_;
     int local_nx = nx;
@@ -285,8 +290,8 @@ void Megan3Scheme::Run(CeceImportState& import_state, CeceExportState& export_st
 
             // Compute shared gamma factors
             double g_lai = get_gamma_lai(L, LAI_C1, LAI_C2, false);
-            double g_age = get_gamma_age(L, L_prev, dbtwn, T, 1.0, 1.0, 1.0, 1.0);
-            double g_sm = get_gamma_sm(gwet, false);
+            double g_age = is_hemco_3121_mode ? 1.0 : get_gamma_age(L, L_prev, dbtwn, T, 1.0, 1.0, 1.0, 1.0);
+            double g_sm = is_hemco_3121_mode ? 1.0 : get_gamma_sm(gwet, false);
             double g_par = get_gamma_par_pceea(pdr, pdf, PAR_AVG, sc, doy, WM2_TO_UMOL, PTOA_C1, PTOA_C2, GP_C1, GP_C2, GP_C3, GP_C4);
 
             // Compute per-class emissions
@@ -303,7 +308,7 @@ void Megan3Scheme::Run(CeceImportState& import_state, CeceExportState& export_st
 
                 // Per-class gamma factors
                 double g_lai_c = get_gamma_lai(L, LAI_C1, LAI_C2, bidir);
-                double g_age_c = get_gamma_age(L, L_prev, dbtwn, T, anew, agro, amat, aold);
+                double g_age_c = is_hemco_3121_mode ? 1.0 : get_gamma_age(L, L_prev, dbtwn, T, anew, agro, amat, aold);
                 double g_t_li = get_gamma_t_li(T, beta, STD_TEMP);
                 double g_t_ld = get_gamma_t_ld(T, T_AVG_15, ct1, cleo, GAS_CONSTANT, CT2_CONST, T_OPT_C1, T_OPT_C2, E_OPT_COEFF);
 
@@ -312,10 +317,10 @@ void Megan3Scheme::Run(CeceImportState& import_state, CeceExportState& export_st
 
                 // Stress factors
                 double g_stress = 1.0;
-                if (enable_wind_stress) {
+                if (enable_wind_stress && !is_hemco_3121_mode) {
                     g_stress *= get_gamma_wind_stress(ws);
                 }
-                if (enable_temp_stress) {
+                if (enable_temp_stress && !is_hemco_3121_mode) {
                     g_stress *= get_gamma_temp_stress(T);
                 }
 

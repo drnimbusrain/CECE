@@ -7,7 +7,7 @@ CECE provides two MEGAN biogenic emission schemes:
 - **`megan`** — Single-species isoprene scheme (original, ported from HEMCO)
 - **`megan3`** — Full MEGAN3 multi-species, multi-class emission system with 19 emission classes, 5-layer canopy model, and chemical mechanism speciation
 
-Both schemes coexist and can be selected independently via the YAML configuration.
+Both schemes coexist and can be selected independently via the YAML configuration. CECE also provides an extended source-pinned **HEMCO 3.12.1 MEGAN parity calculation mode** (`calculation_mode: hemco_3_12_1_stateless`) for stateless benchmark comparisons on global grids (such as 4°x5°).
 
 ---
 
@@ -32,6 +32,22 @@ physics_schemes:
       co2_concentration: 400.0
 ```
 
+### HEMCO 3.12.1 Stateless Reference Mode
+
+To run MEGAN in stateless HEMCO 3.12.1 parity mode:
+
+```yaml
+physics_schemes:
+  - name: megan
+    options:
+      calculation_mode: "hemco_3_12_1_stateless"
+      stateless_mode: true
+```
+
+In this mode:
+- `g_age` and `g_sm` activity factors default to `1.0` matching HEMCO stateless evaluations.
+- When `pft_fractions` (or `biome_fractions`) are supplied, effective emission factors are calculated using species class emission factors and Plant Function Type (PFT) dependencies.
+
 ### Import Fields
 
 | Field Name | Units | Description |
@@ -43,6 +59,7 @@ physics_schemes:
 | `par_diffuse` | W/m² | Diffuse PAR |
 | `solar_cosine` | — | Cosine of solar zenith angle |
 | `soil_moisture_root` | fraction | Root-zone soil moisture (optional) |
+| `pft_fractions` | fraction | 3D array of PFT fractions (optional, [nx, ny, npft]) |
 
 ### Export Fields
 
@@ -288,3 +305,22 @@ physics_schemes:
   - name: bdsnp        # Runs first, writes soil_nox_emissions
   - name: megan3       # Runs second, reads soil_nox_emissions for NO class
 ```
+
+---
+
+## Running HEMCO 3.12.1 MEGAN Parity Comparison
+
+To run the complete isoprene parity test on a global 4°x5° grid (72x46x1):
+
+1. **Execute standalone driver:**
+   ```bash
+   ./build/tests/hemco_comparison_driver
+   ```
+2. **Execute parity unit test suite:**
+   ```bash
+   ./build/tests/test_hemco_parity --gtest_filter="*Megan*"
+   ```
+3. **Run comparison with example YAML config:**
+   ```bash
+   ./build/cece_main examples/cece_config_hemco_megan_parity.yaml
+   ```

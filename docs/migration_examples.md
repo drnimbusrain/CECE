@@ -84,7 +84,7 @@ species:
 ### [Before] HEMCO
 ```fortran
 #ExtNr Name       srcFile          srcVar srcTime             CRE Dim Unit     Species ScalIDs  Cat Hier
-0      MACCITY_CO $ROOT/MACCity.nc  CO    1980-2014/1-12/1/0  C   xy  kg/m2/s  CO      500      1   1
+0      MACCITY_CO $ROOT/MACCity.nc  CO    1980-2014/1-12/1/0  C   xy  kg/m2/s  CO      -        2   1
 0      AEIC_CO    $ROOT/AEIC.nc     CO    2005/1-12/1/0       C   xyz kg/m2/s  CO      -        2   1
 ```
 
@@ -167,5 +167,34 @@ species:
   no:
     - field: "EDGAR_NO_POW"
       category: "anthropogenic"
+      operation: "add"
+```
+
+---
+
+## Example 7: MEGAN Biogenic Emissions Parity Comparison Mode
+**Scenario:** Configure MEGAN in source-pinned HEMCO 3.12.1 stateless calculation mode for benchmark comparisons against MEGAN and MEGAN3 options on global 4°x5° grid.
+
+### [Before] HEMCO
+```fortran
+# ExtNr ExtName  on/off  Species
+108     MEGAN    : on    ISOP
+    --> MEGAN3   :       false
+```
+
+### [After] CECE
+```yaml
+physics_schemes:
+  - name: "megan"
+    options:
+      calculation_mode: "hemco_3_12_1_stateless"
+      stateless_mode: true
+      species_name: "isoprene"
+      export_field_name: "isoprene_emissions"
+
+species:
+  isoprene:
+    - field: "isoprene_emissions"
+      category: "biogenic"
       operation: "add"
 ```

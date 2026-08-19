@@ -1,0 +1,40 @@
+# CECE Configuration: HEMCO 3.12.1 MEGAN Parity Comparison Reference
+#
+# Configures CECE to run the extended source-pinned HEMCO 3.12.1 MEGAN
+# biogenic emissions parity option for comparison reference against
+# native MEGAN and MEGAN3 options on a global 4°x5° grid.
+
+driver_config:
+  run_mode: "standalone"
+  grid_type: "rectilinear"
+  grid_nx: 72
+  grid_ny: 46
+  grid_nz: 1
+  start_time: "2024-07-01T00:00:00Z"
+  end_time: "2024-07-01T01:00:00Z"
+  time_step_seconds: 3600
+
+physics_schemes:
+  - name: "megan"
+    options:
+      calculation_mode: "hemco_3_12_1_stateless"
+      stateless_mode: true
+      species_name: "isoprene"
+      export_field_name: "isoprene_emissions"
+      aef: 1.0e-9
+      co2_concentration: 400.0
+
+  - name: "megan3"
+    options:
+      calculation_mode: "hemco_3_12_1_stateless"
+      mechanism_file: "data/speciation/spc_cb6.yaml"
+      speciation_file: "data/speciation/map_cb6.yaml"
+      co2_concentration: 400.0
+
+species_layers:
+  isoprene:
+    - field_name: "isoprene_emissions"
+      operation: "add"
+      hierarchy: 1
+      category: "biogenic"
+      scale: 1.0
