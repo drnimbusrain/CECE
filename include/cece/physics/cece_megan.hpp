@@ -184,6 +184,7 @@ class MeganScheme : public BasePhysicsScheme {
     double aold_ = 1.0;
     bool is_bidirectional_ = false;
     bool use_wilkinson_ = false;
+    bool stateless_mode_ = false;
 };
 
 }  // namespace cece

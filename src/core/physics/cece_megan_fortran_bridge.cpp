@@ -27,18 +27,14 @@
 extern "C" {
 /**
  * @brief External Fortran subroutine for MEGAN emission calculations.
- *
- * @param temp Temperature field [K]
- * @param lai Leaf area index field [m²/m²]
- * @param pardr Direct photosynthetically active radiation [W/m²]
- * @param pardf Diffuse photosynthetically active radiation [W/m²]
- * @param suncos Cosine of solar zenith angle
- * @param isop Output isoprene emissions [kg/m²/s]
- * @param nx Grid dimension in x-direction
- * @param ny Grid dimension in y-direction
- * @param nz Grid dimension in z-direction
  */
 void run_megan_fortran(double* temp, double* lai, double* pardr, double* pardf, double* suncos, double* isop, int nx, int ny, int nz);
+
+/**
+ * @brief External Fortran subroutine for HEMCO 3.12.1 MEGAN stateless calculation with 24-biome contract.
+ */
+void run_megan_hemco3121_stateless_fortran(double* temp, double* lai, double* pardr, double* pardf, double* suncos, double* biome_frac,
+                                           double* biome_ef, double* isop, int nx, int ny, int nz, int nbiomes);
 }
 
 namespace cece {
@@ -111,8 +107,29 @@ void MeganFortranScheme::Run(CeceImportState& import_state, CeceExportState& exp
     int ny = static_cast<int>(dv_isop.extent(1));
     int nz = static_cast<int>(dv_isop.extent(2));
 
-    run_megan_fortran(dv_temp.view_host().data(), dv_lai.view_host().data(), dv_pardr.view_host().data(), dv_pardf.view_host().data(),
-                      dv_suncos.view_host().data(), dv_isop.view_host().data(), nx, ny, nz);
+    auto it_biome_frac = import_state.fields.find("biome_fractions");
+    if (it_biome_frac == import_state.fields.end()) {
+        it_biome_frac = import_state.fields.find("biome_emission_factors");
+    }
+    auto it_biome_ef = import_state.fields.find("biome_ef_table");
+
+    if (it_biome_frac != import_state.fields.end()) {
+        auto& dv_frac = it_biome_frac->second;
+        dv_frac.sync<Kokkos::HostSpace>();
+        double* ef_ptr = nullptr;
+        if (it_biome_ef != import_state.fields.end()) {
+            it_biome_ef->second.sync<Kokkos::HostSpace>();
+            ef_ptr = it_biome_ef->second.view_host().data();
+        }
+        int nbiomes = static_cast<int>(dv_frac.extent(2) > 1 ? dv_frac.extent(2) : 24);
+
+        run_megan_hemco3121_stateless_fortran(dv_temp.view_host().data(), dv_lai.view_host().data(), dv_pardr.view_host().data(),
+                                               dv_pardf.view_host().data(), dv_suncos.view_host().data(), dv_frac.view_host().data(),
+                                               ef_ptr, dv_isop.view_host().data(), nx, ny, nz, nbiomes);
+    } else {
+        run_megan_fortran(dv_temp.view_host().data(), dv_lai.view_host().data(), dv_pardr.view_host().data(), dv_pardf.view_host().data(),
+                          dv_suncos.view_host().data(), dv_isop.view_host().data(), nx, ny, nz);
+    }
 
     dv_isop.modify<Kokkos::HostSpace>();
     dv_isop.sync<Kokkos::DefaultExecutionSpace>();

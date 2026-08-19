@@ -101,6 +101,66 @@ int main(int argc, char** argv) {
             std::cerr << "  DMS Physics: FAILED (got " << dms_val << ", expected ~" << dms_expected << ")" << std::endl;
             result = 1;
         }
+
+        // 3. Setup HEMCO 3.12.1 MEGAN 24-Biome Contract Test on Global 4°×5° Grid (72x46)
+        std::cout << "[ComparisonDriver] Setting up 24-Biome HEMCO 3.12.1 MEGAN Test on Global 4°x5° Grid (72x46)..." << std::endl;
+        int global_nx = 72, global_ny = 46, global_nz = 1, nbiomes = 24;
+
+        cece::CeceImportState imp_megan;
+        cece::CeceExportState exp_megan;
+
+        auto create_dv_grid = [&](std::string name, double val, int l_nx, int l_ny, int l_nz) {
+            cece::DualView3D dv(name, l_nx, l_ny, l_nz);
+            Kokkos::deep_copy(dv.view_host(), val);
+            dv.modify<Kokkos::HostSpace>();
+            dv.sync<Kokkos::DefaultExecutionSpace>();
+            return dv;
+        };
+
+        imp_megan.fields["temperature"] = create_dv_grid("temperature", 300.0, global_nx, global_ny, global_nz);
+        imp_megan.fields["leaf_area_index"] = create_dv_grid("leaf_area_index", 3.0, global_nx, global_ny, global_nz);
+        imp_megan.fields["par_direct"] = create_dv_grid("par_direct", 100.0, global_nx, global_ny, global_nz);
+        imp_megan.fields["par_diffuse"] = create_dv_grid("par_diffuse", 50.0, global_nx, global_ny, global_nz);
+        imp_megan.fields["solar_cosine"] = create_dv_grid("solar_cosine", 0.8, global_nx, global_ny, global_nz);
+
+        // Populate 24 biome fractions
+        cece::DualView3D dv_bfractions("biome_fractions", global_nx, global_ny, nbiomes);
+        auto h_bfrac = dv_bfractions.view_host();
+        for (int i = 0; i < global_nx; ++i) {
+            for (int j = 0; j < global_ny; ++j) {
+                for (int b = 0; b < nbiomes; ++b) {
+                    h_bfrac(i, j, b) = 1.0 / static_cast<double>(nbiomes);
+                }
+            }
+        }
+        dv_bfractions.modify<Kokkos::HostSpace>();
+        dv_bfractions.sync<Kokkos::DefaultExecutionSpace>();
+        imp_megan.fields["biome_fractions"] = dv_bfractions;
+
+        exp_megan.fields["isoprene_emissions"] = create_dv_grid("isoprene_emissions", 0.0, global_nx, global_ny, global_nz);
+
+        cece::PhysicsSchemeConfig megan_cfg;
+        megan_cfg.name = "megan";
+        megan_cfg.options = YAML::Load("calculation_mode: hemco_3_12_1_stateless\nstateless_mode: true");
+
+        auto megan_scheme = cece::PhysicsFactory::CreateScheme(megan_cfg);
+        if (megan_scheme) {
+            megan_scheme->Initialize(megan_cfg.options, nullptr);
+            megan_scheme->Run(imp_megan, exp_megan);
+
+            exp_megan.fields["isoprene_emissions"].sync<Kokkos::HostSpace>();
+            double val_cpp = exp_megan.fields["isoprene_emissions"].view_host()(0, 0, 0);
+
+            if (val_cpp > 0.0) {
+                std::cout << "  HEMCO 3.12.1 24-Biome MEGAN Global 4x5 Test: SUCCESS (isoprene = " << val_cpp << ")" << std::endl;
+            } else {
+                std::cerr << "  HEMCO 3.12.1 24-Biome MEGAN Global 4x5 Test: FAILED (got " << val_cpp << ")" << std::endl;
+                result = 1;
+            }
+        } else {
+            std::cerr << "  HEMCO 3.12.1 24-Biome MEGAN Global 4x5 Test: FAILED (could not create scheme)" << std::endl;
+            result = 1;
+        }
     }
     Kokkos::finalize();
     std::cout << "[ComparisonDriver] Final Result: " << (result == 0 ? "PASSED" : "FAILED") << std::endl;

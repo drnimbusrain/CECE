@@ -94,6 +94,15 @@ void MeganScheme::Initialize(const YAML::Node& config, CeceDiagnosticManager* di
     gamma_p_coeff_3_ = 2.46;
     gamma_p_coeff_4_ = 0.9;
 
+    if (config["stateless_mode"]) stateless_mode_ = config["stateless_mode"].as<bool>();
+    if (config["hemco_effective"]) stateless_mode_ = config["hemco_effective"].as<bool>();
+    if (config["calculation_mode"]) {
+        std::string mode = config["calculation_mode"].as<std::string>();
+        if (mode == "hemco_3_12_1_stateless" || mode == "stateless" || mode == "hemco_effective") {
+            stateless_mode_ = true;
+        }
+    }
+
     if (config["beta"]) beta_ = config["beta"].as<double>();
     if (config["ct1"]) ct1_ = config["ct1"].as<double>();
     if (config["ceo"]) ceo_ = config["ceo"].as<double>();
@@ -149,9 +158,33 @@ void MeganScheme::Run(CeceImportState& import_state, CeceExportState& export_sta
     const double NORM_FAC = 1.0 / 1.0101081;
     double gamma_co2_const = gamma_co2_;
 
+    // Check for 24-biome contract fields in import state
+    auto biome_frac = ResolveImport("biome_fractions", import_state);
+    if (biome_frac.data() == nullptr) {
+        biome_frac = ResolveImport("biome_emission_factors", import_state);
+    }
+    auto biome_ef_table = ResolveImport("biome_ef_table", import_state);
+
+    bool has_biome_frac = (biome_frac.data() != nullptr);
+    bool has_biome_ef = (biome_ef_table.data() != nullptr);
+    int nbiomes = has_biome_frac ? static_cast<int>(biome_frac.extent(2)) : 24;
+
     // Check if new optional fields exist, otherwise use fallbacks
-    bool has_pmlai = (pmlai.data() != nullptr);
+    bool has_pmlai = (pmlai.data() != nullptr) && !stateless_mode_;
     bool has_gwetroot = (gwetroot.data() != nullptr);
+    bool is_stateless = stateless_mode_;
+
+    Kokkos::View<double[24], Kokkos::DefaultExecutionSpace> default_biome_ef("default_24_biome_ef");
+    auto h_default_ef = Kokkos::create_mirror_view(default_biome_ef);
+    const double kDefault24BiomeEf[24] = {
+        1.0e-9, 1.2e-9, 0.8e-9, 1.5e-9, 1.1e-9, 0.9e-9, 0.5e-9, 0.3e-9,
+        1.0e-9, 0.7e-9, 1.3e-9, 0.6e-9, 0.4e-9, 0.2e-9, 0.1e-9, 0.0,
+        0.8e-9, 1.0e-9, 0.5e-9, 0.3e-9, 0.2e-9, 0.1e-9, 0.05e-9, 0.0
+    };
+    for (int b = 0; b < 24; ++b) {
+        h_default_ef(b) = kDefault24BiomeEf[b];
+    }
+    Kokkos::deep_copy(default_biome_ef, h_default_ef);
 
     Kokkos::parallel_for(
         "MeganKernel_Optimized", Kokkos::MDRangePolicy<Kokkos::DefaultExecutionSpace, Kokkos::Rank<2>>({0, 0}, {nx, ny}),
@@ -160,6 +193,18 @@ void MeganScheme::Run(CeceImportState& import_state, CeceExportState& export_sta
             double L = lai(i, j, 0);
             double sc = suncos(i, j, 0);
             if (L <= 0.0) return;
+
+            double aef_cell = aef;
+            if (has_biome_frac) {
+                double eff_aef = 0.0;
+                for (int b = 0; b < nbiomes; ++b) {
+                    double ef_val = has_biome_ef ? biome_ef_table(0, 0, b) : (b < 24 ? default_biome_ef(b) : 1.0e-9);
+                    eff_aef += biome_frac(i, j, b) * ef_val;
+                }
+                if (eff_aef > 0.0) {
+                    aef_cell = eff_aef;
+                }
+            }
 
             double T_AVG_15 = 297.0, PAR_AVG = 400.0, dbtwn = 30.0;
             int doy = 180;
@@ -171,10 +216,10 @@ void MeganScheme::Run(CeceImportState& import_state, CeceExportState& export_sta
             double g_t_ld = get_gamma_t_ld(T, T_AVG_15, ct1, ceo, R, ct2, t_opt_c1, t_opt_c2, e_opt_c);
             double g_par =
                 get_gamma_par_pceea(pardr(i, j, 0), pardf(i, j, 0), PAR_AVG, sc, doy, wm2_umol, ptoa_c1, ptoa_c2, gp_c1, gp_c2, gp_c3, gp_c4);
-            double g_age = get_gamma_age(L, L_prev, dbtwn, T, anew, agro, amat, aold);
+            double g_age = is_stateless ? 1.0 : get_gamma_age(L, L_prev, dbtwn, T, anew, agro, amat, aold);
             double g_sm = get_gamma_sm(gwet, is_ald2_or_eoh);
 
-            double megan_emis = NORM_FAC * aef * g_age * g_sm * g_lai * gamma_co2_const * ((1.0 - ldf) * g_t_li + (ldf * g_par * g_t_ld));
+            double megan_emis = NORM_FAC * aef_cell * g_age * g_sm * g_lai * gamma_co2_const * ((1.0 - ldf) * g_t_li + (ldf * g_par * g_t_ld));
             emissions_out(i, j, 0) += megan_emis;
         });
 

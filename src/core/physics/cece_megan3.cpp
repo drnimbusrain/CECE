@@ -190,14 +190,51 @@ void Megan3Scheme::Run(CeceImportState& import_state, CeceExportState& export_st
     }
     Kokkos::fence();
 
-    // Fill missing AEF fields with default values
+    // Check for 24-biome contract in import state
+    auto biome_frac = ResolveImport("biome_fractions", import_state);
+    if (biome_frac.data() == nullptr) {
+        biome_frac = ResolveImport("biome_emission_factors", import_state);
+    }
+    auto biome_ef_table = ResolveImport("biome_ef_table", import_state);
+    bool has_biome_frac = (biome_frac.data() != nullptr);
+    bool has_biome_ef = (biome_ef_table.data() != nullptr);
+    int nbiomes = has_biome_frac ? static_cast<int>(biome_frac.extent(2)) : 24;
+
+    Kokkos::View<double[24], Kokkos::DefaultExecutionSpace> default_biome_ef("default_24_biome_ef");
+    auto h_default_ef = Kokkos::create_mirror_view(default_biome_ef);
+    const double kDefault24BiomeEf[24] = {
+        1.0e-9, 1.2e-9, 0.8e-9, 1.5e-9, 1.1e-9, 0.9e-9, 0.5e-9, 0.3e-9,
+        1.0e-9, 0.7e-9, 1.3e-9, 0.6e-9, 0.4e-9, 0.2e-9, 0.1e-9, 0.0,
+        0.8e-9, 1.0e-9, 0.5e-9, 0.3e-9, 0.2e-9, 0.1e-9, 0.05e-9, 0.0
+    };
+    for (int b = 0; b < 24; ++b) {
+        h_default_ef(b) = kDefault24BiomeEf[b];
+    }
+    Kokkos::deep_copy(default_biome_ef, h_default_ef);
+
+    // Fill missing AEF fields with default or 24-biome contract values
     auto d_default_aef = default_aef_;
     for (int c = 0; c < NUM_CLASSES; ++c) {
         if (!has_aef_field[c]) {
             int class_idx = c;
             Kokkos::parallel_for(
                 "FillDefaultAEF", Kokkos::RangePolicy<Kokkos::DefaultExecutionSpace>(0, num_cells),
-                KOKKOS_LAMBDA(int cell) { aef_grid(class_idx, cell) = d_default_aef(class_idx); });
+                KOKKOS_LAMBDA(int cell) {
+                    int i = cell % nx;
+                    int j = cell / nx;
+                    double base_aef = d_default_aef(class_idx);
+                    if (has_biome_frac) {
+                        double eff_aef = 0.0;
+                        for (int b = 0; b < nbiomes; ++b) {
+                            double ef_val = has_biome_ef ? biome_ef_table(0, 0, b) : (b < 24 ? default_biome_ef(b) : base_aef);
+                            eff_aef += biome_frac(i, j, b) * ef_val;
+                        }
+                        if (eff_aef > 0.0) {
+                            base_aef = eff_aef;
+                        }
+                    }
+                    aef_grid(class_idx, cell) = base_aef;
+                });
         }
     }
     Kokkos::fence();
