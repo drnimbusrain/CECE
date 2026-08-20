@@ -7,7 +7,11 @@ from typing import TYPE_CHECKING, List
 
 import numpy as np
 
-from .earthaccess_resolver import EarthAccessStreamConfig, EarthAccessStreamResolver
+# Support both package (relative) and direct-module import
+try:
+    from .earthaccess_resolver import EarthAccessStreamConfig, EarthAccessStreamResolver
+except ImportError:
+    from earthaccess_resolver import EarthAccessStreamConfig, EarthAccessStreamResolver  # type: ignore[no-redef]
 
 if TYPE_CHECKING:
     # Avoid hard dependency on the pybind11 module at import time

@@ -24,12 +24,13 @@ driver:
   start_time: "2022-07-01T00:00:00"
   end_time:   "2022-07-03T23:00:00"
   timestep_seconds: 3600
+  # HEMCO reference 4x5 grid — matches PR #85 (SoilNOx) and PR #90 (MEGAN) parity grids
   grid:
-    grid_name: "F360"
+    grid_name: "HEMCO_4x5"
     lon_min: -180.0
-    lon_max:  180.0
-    lat_min:  -90.0
-    lat_max:   90.0
+    lon_max:  175.0
+    lat_min:  -89.0
+    lat_max:   89.0
 
 meteorology: {}
 

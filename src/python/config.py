@@ -17,7 +17,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any
 
-from .earthaccess_resolver import EarthAccessStreamConfig
+# Support both package (relative) and direct-module import
+try:
+    from .earthaccess_resolver import EarthAccessStreamConfig
+except ImportError:
+    from earthaccess_resolver import EarthAccessStreamConfig  # type: ignore[no-redef]
 
 
 @dataclass
