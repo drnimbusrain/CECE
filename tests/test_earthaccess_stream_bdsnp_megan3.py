@@ -46,6 +46,28 @@ TestLiveEarthDataIntegration  (mark: live_earthdata)
     ~/.netrc.  Performs a small real CMR search and fsspec open against the
     SMAP SPL4SMGP collection as a smoke test.
 
+TestShortNameValidation
+    Config-parse-time CMR ``short_name`` validation (PR #92 follow-up):
+    warns instead of raising, and never blocks config parsing.
+
+TestGridDerivedBoundingBox
+    Auto-derives ``bounding_box`` from ``driver.grid`` extents when a stream
+    does not set one explicitly (PR #92 follow-up).
+
+TestVirtualizeEvaluation
+    Exercises the opt-in ``use_virtual`` / ``open_virtual_mfdataset`` path and
+    its fallback to ``open_mfdataset`` (PR #92 follow-up).
+
+TestFsspecTuningKnobs
+    ``block_size`` / ``cache_type`` forwarded to ``earthaccess.open`` (PR #92
+    follow-up), with graceful fallback on older earthaccess versions.
+
+TestEarthAccessOpenWithLocalFixtureFiles
+    Mocks only ``earthaccess.login`` / ``search_data`` / ``open`` and lets the
+    real ``xr.open_mfdataset(engine="h5netcdf")`` path read genuine local
+    NetCDF4 fixture files, so CI can exercise the real file-reading code
+    without live EDL credentials (PR #92 follow-up).
+
 Running
 -------
 # Fast (no credentials): all tests except live_earthdata
@@ -59,6 +81,8 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
+import warnings
 from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -115,6 +139,13 @@ except ImportError:
     _XARRAY_AVAILABLE = False
 
 try:
+    import h5netcdf  # noqa: F401
+
+    _H5NETCDF_AVAILABLE = True
+except ImportError:
+    _H5NETCDF_AVAILABLE = False
+
+try:
     import earthaccess  # noqa: F401
 
     _EARTHACCESS_AVAILABLE = True
@@ -125,12 +156,19 @@ except ImportError:
 EarthAccessStreamConfig  = _ea_resolver_mod.EarthAccessStreamConfig
 EarthAccessStreamResolver = _ea_resolver_mod.EarthAccessStreamResolver
 EarthAccessStreamBridge  = _stream_bridge_mod.EarthAccessStreamBridge
+validate_short_name  = _ea_resolver_mod.validate_short_name
+validate_short_names = _ea_resolver_mod.validate_short_names
 from config import CeceConfig, parse_earthaccess_streams
 
 # ── Markers ───────────────────────────────────────────────────────────────────
 live_earthdata = pytest.mark.skipif(
     not (os.getenv("EARTHDATA_USERNAME") and os.getenv("EARTHDATA_TOKEN")),
     reason="Live Earthdata credentials not available (set EARTHDATA_USERNAME + EARTHDATA_TOKEN)",
+)
+
+requires_h5netcdf = pytest.mark.skipif(
+    not (_XARRAY_AVAILABLE and _H5NETCDF_AVAILABLE),
+    reason="xarray+h5netcdf not installed — run: pip install 'cece-tools[cloud]'",
 )
 
 requires_xarray = pytest.mark.skipif(
@@ -424,8 +462,8 @@ class TestEarthAccessStreamResolverMocked:
                 )
                 with (
                     patch.object(resolver, "__class__", EarthAccessStreamResolver),
-                    patch("earthaccess_resolver.earthaccess", mock_ea),
-                    patch("earthaccess_resolver.xr", mock_xr),
+                    patch("earthaccess_resolver.earthaccess", mock_ea, create=True),
+                    patch("earthaccess_resolver.xr", mock_xr, create=True),
                 ):
                     result = mock_xr.open_mfdataset.return_value
                 return result, cfg
@@ -973,6 +1011,463 @@ class TestLiveEarthDataIntegration:
         # Read first 512 bytes to confirm the object is readable
         chunk = fobjs[0].read(512)
         assert len(chunk) > 0, "fsspec file object returned zero bytes"
+
+
+
+# =============================================================================
+# 12. CMR short_name validation at config-parse time
+# =============================================================================
+
+class TestShortNameValidation:
+    """validate_short_name / validate_short_names — PR #92 follow-up."""
+
+    def _cfg(self, short_name="SPL4SMGP"):
+        return EarthAccessStreamConfig(
+            name="smap_soil", short_name=short_name,
+            temporal_start="2022-07-01", temporal_end="2022-07-03",
+        )
+
+    def test_warns_and_returns_true_when_earthaccess_missing(self):
+        with patch("earthaccess_resolver._EARTHACCESS_AVAILABLE", False):
+            with pytest.warns(UserWarning, match="Skipping CMR"):
+                assert validate_short_name(self._cfg()) is True
+
+    def test_returns_true_when_dataset_found(self):
+        mock_ea = MagicMock()
+        mock_ea.search_datasets.return_value = [MagicMock()]
+        with (
+            patch("earthaccess_resolver.earthaccess", mock_ea, create=True),
+            patch("earthaccess_resolver._EARTHACCESS_AVAILABLE", True),
+        ):
+            assert validate_short_name(self._cfg()) is True
+        mock_ea.search_datasets.assert_called_once_with(short_name="SPL4SMGP", count=1)
+
+    def test_warns_and_returns_false_when_dataset_not_found(self):
+        mock_ea = MagicMock()
+        mock_ea.search_datasets.return_value = []
+        with (
+            patch("earthaccess_resolver.earthaccess", mock_ea, create=True),
+            patch("earthaccess_resolver._EARTHACCESS_AVAILABLE", True),
+        ):
+            with pytest.warns(UserWarning, match="CMR has no collection"):
+                assert validate_short_name(self._cfg(short_name="NOT_A_REAL_DATASET")) is False
+
+    def test_warns_but_does_not_raise_on_cmr_error(self):
+        mock_ea = MagicMock()
+        mock_ea.search_datasets.side_effect = RuntimeError("CMR unavailable")
+        with (
+            patch("earthaccess_resolver.earthaccess", mock_ea, create=True),
+            patch("earthaccess_resolver._EARTHACCESS_AVAILABLE", True),
+        ):
+            with pytest.warns(UserWarning, match="Could not validate"):
+                assert validate_short_name(self._cfg()) is True
+
+    def test_validate_short_names_reports_only_failures(self):
+        mock_ea = MagicMock()
+        mock_ea.search_datasets.side_effect = lambda short_name, count: (
+            [] if short_name == "BAD" else [MagicMock()]
+        )
+        with (
+            patch("earthaccess_resolver.earthaccess", mock_ea, create=True),
+            patch("earthaccess_resolver._EARTHACCESS_AVAILABLE", True),
+        ):
+            with pytest.warns(UserWarning):
+                failed = validate_short_names([self._cfg("SPL4SMGP"), self._cfg("BAD")])
+        assert failed == ["smap_soil"]
+
+    def test_config_parse_time_opt_in_flag_triggers_validation(self):
+        """cece_data.validate_earthaccess_short_names: true wires validation into _from_dict."""
+        raw = {
+            "cece_data": {
+                "validate_earthaccess_short_names": True,
+                "streams": [
+                    {
+                        "name": "smap_soil", "source": "earthaccess",
+                        "short_name": "SPL4SMGP",
+                        "temporal_start": "2022-07-01", "temporal_end": "2022-07-03",
+                        "variables": {},
+                    }
+                ],
+            },
+            "physics_schemes": [], "species": {},
+        }
+        with patch("earthaccess_resolver._EARTHACCESS_AVAILABLE", False):
+            with pytest.warns(UserWarning, match="Skipping CMR"):
+                config = CeceConfig.from_dict(raw)
+        assert len(config.earthaccess_streams) == 1
+
+    def test_config_parse_time_flag_off_by_default(self):
+        """Without the opt-in flag, no CMR validation warning fires."""
+        raw = {
+            "cece_data": {
+                "streams": [
+                    {
+                        "name": "smap_soil", "source": "earthaccess",
+                        "short_name": "SPL4SMGP",
+                        "temporal_start": "2022-07-01", "temporal_end": "2022-07-03",
+                        "variables": {},
+                    }
+                ],
+            },
+            "physics_schemes": [], "species": {},
+        }
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            config = CeceConfig.from_dict(raw)  # must not raise/warn
+        assert len(config.earthaccess_streams) == 1
+
+
+# =============================================================================
+# 13. Auto-derived bounding_box from driver.grid
+# =============================================================================
+
+class TestGridDerivedBoundingBox:
+    """Auto-derive bounding_box from driver.grid extents — PR #92 follow-up."""
+
+    def _raw_config(self, stream_overrides=None):
+        stream = {
+            "name": "smap_soil", "source": "earthaccess",
+            "short_name": "SPL4SMGP",
+            "temporal_start": "2022-07-01", "temporal_end": "2022-07-03",
+            "variables": {"sm_rootzone": "soil_moisture_root"},
+        }
+        stream.update(stream_overrides or {})
+        return {
+            "driver": {"grid": {
+                "grid_name": "HEMCO_4x5",
+                "lon_min": -180.0, "lon_max": 175.0,
+                "lat_min": -89.0, "lat_max": 89.0,
+            }},
+            "cece_data": {"streams": [stream]},
+            "physics_schemes": [], "species": {},
+        }
+
+    def test_cece_config_derives_bounding_box_from_grid(self):
+        config = CeceConfig.from_dict(self._raw_config())
+        assert config.earthaccess_streams[0].bounding_box == (-180.0, -89.0, 175.0, 89.0)
+
+    def test_explicit_bounding_box_is_not_overridden(self):
+        config = CeceConfig.from_dict(
+            self._raw_config({"bounding_box": [10.0, 20.0, 30.0, 40.0]})
+        )
+        assert config.earthaccess_streams[0].bounding_box == [10.0, 20.0, 30.0, 40.0]
+
+    def test_no_grid_leaves_bounding_box_none(self):
+        raw = self._raw_config()
+        del raw["driver"]
+        config = CeceConfig.from_dict(raw)
+        assert config.earthaccess_streams[0].bounding_box is None
+
+    def test_config_grid_property_exposes_parsed_grid(self):
+        config = CeceConfig.from_dict(self._raw_config())
+        assert config.grid["lon_min"] == -180.0
+        assert config.grid["grid_name"] == "HEMCO_4x5"
+
+    def test_parse_earthaccess_streams_also_derives_bounding_box(self):
+        streams = parse_earthaccess_streams(self._raw_config())
+        assert streams[0].bounding_box == (-180.0, -89.0, 175.0, 89.0)
+
+    def test_example_yaml_bounding_box_matches_its_own_grid(self):
+        yaml_path = _REPO_ROOT / "tests" / "cece_config_earthaccess_4x5_test.yaml"
+        raw = yaml.safe_load(yaml_path.read_text())
+        config = CeceConfig.from_dict(raw)
+        grid = raw["driver"]["grid"]
+        expected = (grid["lon_min"], grid["lat_min"], grid["lon_max"], grid["lat_max"])
+        for stream in config.earthaccess_streams:
+            assert stream.bounding_box == expected
+
+
+# =============================================================================
+# 14. earthaccess.virtualize() / open_virtual_mfdataset evaluation
+# =============================================================================
+
+class TestVirtualizeEvaluation:
+    """Opt-in VirtualiZarr/DMR++ path and its fallback — PR #92 follow-up."""
+
+    def _cfg(self, use_virtual=True):
+        return EarthAccessStreamConfig(
+            name="modis_lai", short_name="MCD15A2H",
+            temporal_start="2022-07-01", temporal_end="2022-07-03",
+            use_virtual=use_virtual,
+        )
+
+    def test_use_virtual_defaults_to_false(self):
+        assert EarthAccessStreamConfig(
+            name="x", short_name="Y", temporal_start="a", temporal_end="b",
+        ).use_virtual is False
+
+    def test_uses_open_virtual_mfdataset_when_available(self):
+        mock_ea = MagicMock()
+        mock_ea.search_data.return_value = [MagicMock()]
+        virtual_ds = MagicMock(name="virtual_dataset")
+        mock_ea.open_virtual_mfdataset.return_value = virtual_ds
+
+        with (
+            patch("earthaccess_resolver.earthaccess", mock_ea, create=True),
+            patch("earthaccess_resolver._EARTHACCESS_AVAILABLE", True),
+        ):
+            resolver = EarthAccessStreamResolver.__new__(EarthAccessStreamResolver)
+            resolver._auth = MagicMock()
+            result = resolver.open_as_xarray(self._cfg(use_virtual=True))
+
+        assert result is virtual_ds
+        mock_ea.open_virtual_mfdataset.assert_called_once()
+        mock_ea.open.assert_not_called()
+
+    def test_falls_back_when_open_virtual_mfdataset_missing(self):
+        mock_ea = MagicMock(spec=["login", "search_data", "open"])  # no open_virtual_mfdataset
+        mock_ea.search_data.return_value = [MagicMock()]
+        mock_ea.open.return_value = [MagicMock()]
+        mock_xr = MagicMock()
+        fallback_ds = MagicMock(name="fallback_dataset")
+        mock_xr.open_mfdataset.return_value = fallback_ds
+
+        with (
+            patch("earthaccess_resolver.earthaccess", mock_ea, create=True),
+            patch("earthaccess_resolver.xr", mock_xr, create=True),
+            patch("earthaccess_resolver._EARTHACCESS_AVAILABLE", True),
+        ):
+            resolver = EarthAccessStreamResolver.__new__(EarthAccessStreamResolver)
+            resolver._auth = MagicMock()
+            with pytest.warns(UserWarning, match="no open_virtual_mfdataset"):
+                result = resolver.open_as_xarray(self._cfg(use_virtual=True))
+
+        assert result is fallback_ds
+        mock_ea.open.assert_called_once()
+
+    def test_falls_back_when_open_virtual_mfdataset_raises(self):
+        mock_ea = MagicMock()
+        mock_ea.search_data.return_value = [MagicMock()]
+        mock_ea.open_virtual_mfdataset.side_effect = RuntimeError("no DMR++ sidecar")
+        mock_ea.open.return_value = [MagicMock()]
+        mock_xr = MagicMock()
+        fallback_ds = MagicMock(name="fallback_dataset")
+        mock_xr.open_mfdataset.return_value = fallback_ds
+
+        with (
+            patch("earthaccess_resolver.earthaccess", mock_ea, create=True),
+            patch("earthaccess_resolver.xr", mock_xr, create=True),
+            patch("earthaccess_resolver._EARTHACCESS_AVAILABLE", True),
+        ):
+            resolver = EarthAccessStreamResolver.__new__(EarthAccessStreamResolver)
+            resolver._auth = MagicMock()
+            with pytest.warns(UserWarning, match="falling back to open_mfdataset"):
+                result = resolver.open_as_xarray(self._cfg(use_virtual=True))
+
+        assert result is fallback_ds
+
+    def test_use_virtual_false_never_touches_open_virtual_mfdataset(self):
+        mock_ea = MagicMock()
+        mock_ea.search_data.return_value = [MagicMock()]
+        mock_ea.open.return_value = [MagicMock()]
+        mock_xr = MagicMock()
+
+        with (
+            patch("earthaccess_resolver.earthaccess", mock_ea, create=True),
+            patch("earthaccess_resolver.xr", mock_xr, create=True),
+            patch("earthaccess_resolver._EARTHACCESS_AVAILABLE", True),
+        ):
+            resolver = EarthAccessStreamResolver.__new__(EarthAccessStreamResolver)
+            resolver._auth = MagicMock()
+            resolver.open_as_xarray(self._cfg(use_virtual=False))
+
+        mock_ea.open_virtual_mfdataset.assert_not_called()
+
+    def test_yaml_virtual_key_maps_to_use_virtual(self):
+        raw = {
+            "cece_data": {"streams": [{
+                "name": "modis_lai", "source": "earthaccess", "short_name": "MCD15A2H",
+                "temporal_start": "2022-07-01", "temporal_end": "2022-07-03",
+                "variables": {}, "virtual": True,
+            }]},
+            "physics_schemes": [], "species": {},
+        }
+        config = CeceConfig.from_dict(raw)
+        assert config.earthaccess_streams[0].use_virtual is True
+
+
+# =============================================================================
+# 15. fsspec block_size / cache_type tuning knobs
+# =============================================================================
+
+class TestFsspecTuningKnobs:
+    """block_size / cache_type forwarded to earthaccess.open — PR #92 follow-up."""
+
+    def _cfg(self, **kwargs):
+        return EarthAccessStreamConfig(
+            name="modis_lai", short_name="MCD15A2H",
+            temporal_start="2022-07-01", temporal_end="2022-07-03", **kwargs,
+        )
+
+    def test_defaults_are_none(self):
+        cfg = self._cfg()
+        assert cfg.block_size is None
+        assert cfg.cache_type is None
+
+    def test_kwargs_forwarded_to_earthaccess_open(self):
+        mock_ea = MagicMock()
+        mock_ea.search_data.return_value = [MagicMock()]
+        mock_ea.open.return_value = [MagicMock()]
+        mock_xr = MagicMock()
+
+        with (
+            patch("earthaccess_resolver.earthaccess", mock_ea, create=True),
+            patch("earthaccess_resolver.xr", mock_xr, create=True),
+            patch("earthaccess_resolver._EARTHACCESS_AVAILABLE", True),
+        ):
+            resolver = EarthAccessStreamResolver.__new__(EarthAccessStreamResolver)
+            resolver._auth = MagicMock()
+            resolver.open_as_xarray(self._cfg(block_size=8 * 1024 * 1024, cache_type="blockcache"))
+
+        mock_ea.open.assert_called_once_with(
+            mock_ea.search_data.return_value, block_size=8 * 1024 * 1024, cache_type="blockcache"
+        )
+
+    def test_no_kwargs_when_unset(self):
+        mock_ea = MagicMock()
+        mock_ea.search_data.return_value = [MagicMock()]
+        mock_ea.open.return_value = [MagicMock()]
+        mock_xr = MagicMock()
+
+        with (
+            patch("earthaccess_resolver.earthaccess", mock_ea, create=True),
+            patch("earthaccess_resolver.xr", mock_xr, create=True),
+            patch("earthaccess_resolver._EARTHACCESS_AVAILABLE", True),
+        ):
+            resolver = EarthAccessStreamResolver.__new__(EarthAccessStreamResolver)
+            resolver._auth = MagicMock()
+            resolver.open_as_xarray(self._cfg())
+
+        mock_ea.open.assert_called_once_with(mock_ea.search_data.return_value)
+
+    def test_falls_back_when_earthaccess_open_rejects_kwargs(self):
+        mock_ea = MagicMock()
+        mock_ea.search_data.return_value = [MagicMock()]
+
+        call_count = {"n": 0}
+
+        def _open(granules, **kwargs):
+            call_count["n"] += 1
+            if kwargs:
+                raise TypeError("open() got unexpected keyword arguments")
+            return [MagicMock()]
+
+        mock_ea.open.side_effect = _open
+        mock_xr = MagicMock()
+
+        with (
+            patch("earthaccess_resolver.earthaccess", mock_ea, create=True),
+            patch("earthaccess_resolver.xr", mock_xr, create=True),
+            patch("earthaccess_resolver._EARTHACCESS_AVAILABLE", True),
+        ):
+            resolver = EarthAccessStreamResolver.__new__(EarthAccessStreamResolver)
+            resolver._auth = MagicMock()
+            with pytest.warns(UserWarning, match="does not accept block_size/cache_type"):
+                resolver.open_as_xarray(self._cfg(block_size=1024))
+
+        assert call_count["n"] == 2
+
+    def test_yaml_block_size_and_cache_type_parsed(self):
+        raw = {
+            "cece_data": {"streams": [{
+                "name": "modis_lai", "source": "earthaccess", "short_name": "MCD15A2H",
+                "temporal_start": "2022-07-01", "temporal_end": "2022-07-03",
+                "variables": {}, "block_size": 4194304, "cache_type": "readahead",
+            }]},
+            "physics_schemes": [], "species": {},
+        }
+        config = CeceConfig.from_dict(raw)
+        cfg = config.earthaccess_streams[0]
+        assert cfg.block_size == 4194304
+        assert cfg.cache_type == "readahead"
+
+
+# =============================================================================
+# 16. earthaccess.open() mocked, real local NetCDF fixture files read through
+#     the genuine xr.open_mfdataset(engine="h5netcdf") path
+# =============================================================================
+
+@requires_h5netcdf
+class TestEarthAccessOpenWithLocalFixtureFiles:
+    """Only earthaccess.login/search_data/open are mocked; the fixture files are
+    real NetCDF4 files on disk, read through the unmocked xarray/h5netcdf path.
+    Allows CI to exercise real file I/O without live EDL credentials."""
+
+    @pytest.fixture
+    def smap_fixture_path(self, tmp_path):
+        ds = _make_smap_dataset()
+        path = tmp_path / "smap_fixture.nc"
+        ds.to_netcdf(path, engine="h5netcdf")
+        return path
+
+    @pytest.fixture
+    def modis_fixture_path(self, tmp_path):
+        ds = _make_modis_lai_dataset()
+        path = tmp_path / "modis_fixture.nc"
+        ds.to_netcdf(path, engine="h5netcdf")
+        return path
+
+    def _resolver_with_mocked_granules(self, mock_ea):
+        resolver = EarthAccessStreamResolver.__new__(EarthAccessStreamResolver)
+        resolver._auth = MagicMock()
+        return resolver
+
+    def test_open_as_xarray_reads_real_local_fixture_file(self, smap_fixture_path):
+        mock_ea = MagicMock()
+        mock_ea.login.return_value = MagicMock()
+        mock_ea.search_data.return_value = [MagicMock()]
+        # earthaccess.open() normally returns fsspec file-like objects; a plain
+        # local file handle satisfies the same "file-like" contract h5netcdf needs.
+        mock_ea.open.return_value = [open(smap_fixture_path, "rb")]
+
+        with (
+            patch("earthaccess_resolver.earthaccess", mock_ea, create=True),
+            patch("earthaccess_resolver.xr", xr, create=True),
+            patch("earthaccess_resolver._EARTHACCESS_AVAILABLE", True),
+        ):
+            resolver = self._resolver_with_mocked_granules(mock_ea)
+            cfg = EarthAccessStreamConfig(
+                name="smap_soil", short_name="SPL4SMGP",
+                temporal_start="2022-07-01", temporal_end="2022-07-03",
+                variable_map={"sm_rootzone": "soil_moisture_root"},
+            )
+            result = resolver.open_as_xarray(cfg)
+
+        assert "sm_rootzone" in result.variables
+        np.testing.assert_allclose(result["lat"].values, LAT)
+        np.testing.assert_allclose(result["lon"].values, LON)
+        result.close()
+
+    def test_bridge_injects_from_real_local_fixture_file(self, modis_fixture_path):
+        mock_ea = MagicMock()
+        mock_ea.login.return_value = MagicMock()
+        mock_ea.search_data.return_value = [MagicMock()]
+        mock_ea.open.return_value = [open(modis_fixture_path, "rb")]
+
+        with (
+            patch("earthaccess_resolver.earthaccess", mock_ea, create=True),
+            patch("earthaccess_resolver.xr", xr, create=True),
+            patch("earthaccess_resolver._EARTHACCESS_AVAILABLE", True),
+        ):
+            cfg = EarthAccessStreamConfig(
+                name="modis_lai", short_name="MCD15A2H",
+                temporal_start="2022-07-01", temporal_end="2022-07-04",
+                variable_map={"Lai_500m": "leaf_area_index"},
+            )
+            bridge = EarthAccessStreamBridge.__new__(EarthAccessStreamBridge)
+            resolver = self._resolver_with_mocked_granules(mock_ea)
+            bridge._datasets = [resolver.open_as_xarray(cfg)]
+            bridge._configs = [cfg]
+
+            state = _make_import_state()
+            bridge.inject_at_time(state, datetime(2022, 7, 1, 12, 0, 0))
+
+        assert "leaf_area_index" in state.get_field_names()
+        arr = state._fields["leaf_area_index"] if isinstance(state, _StubImportState) else None
+        if arr is not None:
+            assert arr.dtype == np.float64
+            assert arr.flags["F_CONTIGUOUS"]
+        bridge._datasets[0].close()
 
 
 if __name__ == "__main__":

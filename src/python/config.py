@@ -19,9 +19,23 @@ from typing import Dict, List, Optional, Any
 
 # Support both package (relative) and direct-module import
 try:
-    from .earthaccess_resolver import EarthAccessStreamConfig
+    from .earthaccess_resolver import EarthAccessStreamConfig, validate_short_names
 except ImportError:
-    from earthaccess_resolver import EarthAccessStreamConfig  # type: ignore[no-redef]
+    from earthaccess_resolver import EarthAccessStreamConfig, validate_short_names  # type: ignore[no-redef]
+
+
+def _bounding_box_from_grid(grid: dict) -> Optional[tuple]:
+    """Derive an earthaccess ``(west, south, east, north)`` bounding box from a
+    CECE ``driver.grid`` block, or ``None`` if the extents are not present."""
+    if not grid:
+        return None
+    required = ("lon_min", "lon_max", "lat_min", "lat_max")
+    if not all(key in grid for key in required):
+        return None
+    return (
+        float(grid["lon_min"]), float(grid["lat_min"]),
+        float(grid["lon_max"]), float(grid["lat_max"]),
+    )
 
 
 @dataclass
@@ -361,6 +375,7 @@ class CeceConfig:
         self._cece_data: Dict[str, Any] = {"streams": []}
         self._vertical_config: VerticalDistributionConfig = VerticalDistributionConfig()
         self._temporal_cycles: Dict[str, List] = {}
+        self._grid: Dict[str, Any] = {}
 
         if config_dict:
             self._from_dict(config_dict)
@@ -718,18 +733,25 @@ class CeceConfig:
             )
 
         # Data streams — earthaccess streams are stored separately, not sent to AMIO
+        self._grid = dict(config_dict.get("driver", {}).get("grid", {}))
         for stream_data in config_dict.get("cece_data", {}).get("streams", []):
             if stream_data.get("source") == "earthaccess":
+                bounding_box = stream_data.get("bounding_box")
+                if bounding_box is None:
+                    bounding_box = _bounding_box_from_grid(self._grid)
                 ea_cfg = EarthAccessStreamConfig(
                     name=stream_data.get("name", ""),
                     short_name=stream_data["short_name"],
                     temporal_start=stream_data["temporal_start"],
                     temporal_end=stream_data["temporal_end"],
                     variable_map=stream_data.get("variables", {}),
-                    bounding_box=stream_data.get("bounding_box"),
+                    bounding_box=bounding_box,
                     version=stream_data.get("version"),
                     cloud_hosted=stream_data.get("cloud_hosted", True),
                     daac=stream_data.get("daac"),
+                    block_size=stream_data.get("block_size"),
+                    cache_type=stream_data.get("cache_type"),
+                    use_virtual=stream_data.get("virtual", False),
                 )
                 self._cece_data.setdefault("earthaccess_streams", []).append(ea_cfg)
             else:
@@ -741,6 +763,15 @@ class CeceConfig:
                     tintalgo=stream_data.get("tintalgo", "linear"),
                     mapalgo=stream_data.get("mapalgo", "default"),
                 )
+
+        # Optional opt-in: warn about unresolvable short_names before the run
+        # starts, rather than at the first timestep. Off by default because it
+        # requires a live CMR query; enable with
+        # cece_data.validate_earthaccess_short_names: true
+        if config_dict.get("cece_data", {}).get("validate_earthaccess_short_names", False):
+            ea_streams = self._cece_data.get("earthaccess_streams", [])
+            if ea_streams:
+                validate_short_names(ea_streams)
 
         # Temporal cycles
         for name, factors in config_dict.get("temporal_cycles", {}).items():
@@ -767,6 +798,11 @@ class CeceConfig:
         return self._vertical_config
 
     @property
+    def grid(self) -> Dict[str, Any]:
+        """dict : Parsed ``driver.grid`` block (lon/lat extents), if present."""
+        return self._grid
+
+    @property
     def earthaccess_streams(self) -> List[EarthAccessStreamConfig]:
         """list of EarthAccessStreamConfig : Cloud-streamed NASA Earthdata sources."""
         return self._cece_data.get("earthaccess_streams", [])
@@ -776,7 +812,9 @@ def parse_earthaccess_streams(cece_cfg: dict) -> List[EarthAccessStreamConfig]:
     """Extract ``source: earthaccess`` stream entries from a raw config dict.
 
     Suitable for use before a full ``CeceConfig`` parse, e.g. to pre-open
-    remote datasets while the C++ core is initializing.
+    remote datasets while the C++ core is initializing. A stream's
+    ``bounding_box`` is auto-derived from ``driver.grid`` extents when the
+    stream does not set one explicitly.
 
     Parameters
     ----------
@@ -788,10 +826,14 @@ def parse_earthaccess_streams(cece_cfg: dict) -> List[EarthAccessStreamConfig]:
     list of EarthAccessStreamConfig
         One entry per stream that declares ``source: earthaccess``.
     """
+    grid = cece_cfg.get("driver", {}).get("grid", {})
     results: List[EarthAccessStreamConfig] = []
     for stream in cece_cfg.get("cece_data", {}).get("streams", []):
         if stream.get("source") != "earthaccess":
             continue
+        bounding_box = stream.get("bounding_box")
+        if bounding_box is None:
+            bounding_box = _bounding_box_from_grid(grid)
         results.append(
             EarthAccessStreamConfig(
                 name=stream.get("name", ""),
@@ -799,10 +841,13 @@ def parse_earthaccess_streams(cece_cfg: dict) -> List[EarthAccessStreamConfig]:
                 temporal_start=stream["temporal_start"],
                 temporal_end=stream["temporal_end"],
                 variable_map=stream.get("variables", {}),
-                bounding_box=stream.get("bounding_box"),
+                bounding_box=bounding_box,
                 version=stream.get("version"),
                 cloud_hosted=stream.get("cloud_hosted", True),
                 daac=stream.get("daac"),
+                block_size=stream.get("block_size"),
+                cache_type=stream.get("cache_type"),
+                use_virtual=stream.get("virtual", False),
             )
         )
     return results
