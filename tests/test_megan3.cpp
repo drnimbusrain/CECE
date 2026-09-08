@@ -1073,6 +1073,60 @@ class Megan3SchemeTest : public ::testing::Test {
 };
 
 // ============================================================================
+// Explicit histories must preserve defaults and reject unphysical settings.
+TEST(MeganHistoryTest, DefaultsAndOverrides) {
+    auto defaults = conf::Config::from_string("{}");
+    const auto a = MeganHistory::FromConfig(defaults.root());
+    EXPECT_DOUBLE_EQ(a.temperature_k, 297.0);
+    EXPECT_DOUBLE_EQ(a.par_wm2, 400.0);
+    EXPECT_DOUBLE_EQ(a.days_between_lai, 30.0);
+    EXPECT_EQ(a.day_of_year, 180);
+    EXPECT_FALSE(a.leaf_age_uses_history);
+    auto config = conf::Config::from_string(
+        "temperature_history_k: 288.15\npar_history_wm2: 78\n"
+        "days_between_lai: 1\nday_of_year: 171\nleaf_age_uses_temperature_history: true\n");
+    const auto b = MeganHistory::FromConfig(config.root());
+    EXPECT_DOUBLE_EQ(b.temperature_k, 288.15);
+    EXPECT_DOUBLE_EQ(b.par_wm2, 78.0);
+    EXPECT_DOUBLE_EQ(b.days_between_lai, 1.0);
+    EXPECT_EQ(b.day_of_year, 171);
+    EXPECT_TRUE(b.leaf_age_uses_history);
+}
+
+TEST(MeganHistoryTest, InvalidOptionsFail) {
+    for (const auto* text : {"temperature_history_k: 0", "temperature_history_k: .nan", "par_history_wm2: -1", "par_history_wm2: .inf",
+                             "days_between_lai: 0", "days_between_lai: .nan", "day_of_year: 0", "day_of_year: 367", "temperature_history_k: invalid",
+                             "day_of_year: invalid", "leaf_age_uses_temperature_history: invalid"}) {
+        auto config = conf::Config::from_string(text);
+        EXPECT_ANY_THROW(MeganHistory::FromConfig(config.root())) << text;
+    }
+}
+
+TEST_F(Megan3SchemeTest, EffectiveHistoryOptionsReachRuntime) {
+    auto run = [&](const std::string& extra) {
+        const std::string text = "mechanism_file: \"" + (tmp_dir / "spc_test.yaml").string() + "\"\nspeciation_file: \"" +
+                                 (tmp_dir / "map_test.yaml").string() + "\"\n" + extra;
+        auto config = conf::Config::from_string(text);
+        Megan3Scheme scheme;
+        scheme.Initialize(config.root(), nullptr);
+        SetFieldValue("MEGAN_ISOP", 0.0, false);
+        scheme.Run(import_state, export_state);
+        auto& result = export_state.fields.at("MEGAN_ISOP");
+        result.sync<Kokkos::HostSpace>();
+        return result.view_host()(0, 0, 0);
+    };
+    const double original = run("");
+    ASSERT_GT(original, 0.0);
+    EXPECT_DOUBLE_EQ(original, run("temperature_history_k: 297\npar_history_wm2: 400\ndays_between_lai: 30\nday_of_year: 180\n"));
+    EXPECT_NE(original, run("temperature_history_k: 288.15\n"));
+    EXPECT_NE(original, run("par_history_wm2: 78\n"));
+    EXPECT_NE(original, run("day_of_year: 1\n"));
+    import_state.fields["leaf_area_index_prev"] = create_dv("previous_lai", 2.0);
+    EXPECT_NE(run("days_between_lai: 1\n"), run("days_between_lai: 30\n"));
+    EXPECT_NE(run("temperature_history_k: 280\nleaf_age_uses_temperature_history: true\n"),
+              run("temperature_history_k: 280\nleaf_age_uses_temperature_history: false\n"));
+}
+
 // Test: Factory creates Megan3Scheme for "megan3" (Req 9.5)
 // ============================================================================
 

@@ -112,6 +112,7 @@ void MeganScheme::Initialize(const conf::Value& config, CeceDiagnosticManager* d
     }
 
     // ---- Native-mode parameters ----
+    history_ = MeganHistory::FromConfig(config);
     gamma_co2_coeff_1_ = config["gamma_co2_coeff_1"].double_or(8.9406);
     gamma_co2_coeff_2_ = config["gamma_co2_coeff_2"].double_or(0.0024);
 
@@ -278,6 +279,7 @@ void MeganScheme::Run(CeceImportState& import_state, CeceExportState& export_sta
 
     bool has_pmlai = (pmlai.data() != nullptr);
     bool has_gwetroot = (gwetroot.data() != nullptr);
+    const auto history = history_;
 
     Kokkos::parallel_for(
         "MeganKernel_Optimized", Kokkos::MDRangePolicy<Kokkos::DefaultExecutionSpace, Kokkos::Rank<2>>({0, 0}, {nx, ny}),
@@ -287,8 +289,11 @@ void MeganScheme::Run(CeceImportState& import_state, CeceExportState& export_sta
             double sc = suncos(i, j, 0);
             if (L <= 0.0) return;
 
-            double T_AVG_15 = 297.0, PAR_AVG = 400.0, dbtwn = 30.0;
-            int doy = 180;
+            const double T_AVG_15 = history.temperature_k;
+            const double PAR_AVG = history.par_wm2;
+            const double dbtwn = history.days_between_lai;
+            const int doy = history.day_of_year;
+            const double age_temperature = history.leaf_age_uses_history ? T_AVG_15 : T;
             double L_prev = has_pmlai ? pmlai(i, j, 0) : L;
             double gwet = has_gwetroot ? gwetroot(i, j, 0) : 1.0;
 
@@ -297,7 +302,7 @@ void MeganScheme::Run(CeceImportState& import_state, CeceExportState& export_sta
             double g_t_ld = get_gamma_t_ld(T, T_AVG_15, ct1, ceo, R, ct2, t_opt_c1, t_opt_c2, e_opt_c);
             double g_par =
                 get_gamma_par_pceea(pardr(i, j, 0), pardf(i, j, 0), PAR_AVG, sc, doy, wm2_umol, ptoa_c1, ptoa_c2, gp_c1, gp_c2, gp_c3, gp_c4);
-            double g_age = get_gamma_age(L, L_prev, dbtwn, T, anew, agro, amat, aold);
+            double g_age = get_gamma_age(L, L_prev, dbtwn, age_temperature, anew, agro, amat, aold);
             double g_sm = get_gamma_sm(gwet, is_ald2_or_eoh);
 
             double megan_emis = NORM_FAC * aef * g_age * g_sm * g_lai * gamma_co2_const * ((1.0 - ldf) * g_t_li + (ldf * g_par * g_t_ld));

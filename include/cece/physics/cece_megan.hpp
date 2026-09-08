@@ -7,6 +7,7 @@
 #include <numbers>
 #include <string>
 
+#include "cece/physics/cece_megan_history.hpp"
 #include "cece/physics/hemco_megan_stateless.hpp"
 #include "cece/physics_scheme.hpp"
 
@@ -170,6 +171,7 @@ class MeganScheme : public BasePhysicsScheme {
     int hemco_day_of_year_ = hemco_megan::v3_12_1::kReferenceDoy;
 
     // ---- Native-mode parameters (ignored in hemco_3_12_1 mode) ----
+    MeganHistory history_;
     double gamma_co2_ = 0.0;
     double beta_ = 0.13;
     double ct1_ = 95.0;

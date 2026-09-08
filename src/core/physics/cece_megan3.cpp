@@ -1,10 +1,10 @@
 /**
  * @file cece_megan3.cpp
- * @brief Full MEGAN3 multi-species, multi-class biogenic emission scheme.
+ * @brief MEGAN3-class biogenic emissions and chemical mechanism speciation.
  *
  * Implements the Megan3Scheme orchestrator that computes emissions for 19
- * MEGAN3 emission classes using a 5-layer canopy model, full vegetation
- * emission activity factors, and chemical mechanism speciation.
+ * MEGAN3 emission classes using bulk vegetation activity factors and chemical
+ * mechanism speciation. Multilayer canopy helpers are not used by this kernel.
  *
  * Registered as "megan3" via PhysicsRegistration. The existing "megan" scheme
  * remains unchanged for backward compatibility.
@@ -65,6 +65,7 @@ static constexpr double kDefaultAef[19] = {
 void Megan3Scheme::Initialize(const conf::Value& config, CeceDiagnosticManager* diag_manager) {
     // Call base class to parse input_mapping, output_mapping, diagnostics
     BasePhysicsScheme::Initialize(config, diag_manager);
+    history_ = MeganHistory::FromConfig(config);
 
     // ---- Load speciation configuration ----
     std::string mechanism_path = "data/speciation/spc_cb6.yaml";
@@ -228,9 +229,7 @@ void Megan3Scheme::Run(CeceImportState& import_state, CeceExportState& export_st
     bool enable_wind_stress = activity_calc_.enable_wind_stress_;
     bool enable_temp_stress = activity_calc_.enable_temp_stress_;
 
-    auto d_gauss_weights = canopy_model_.gauss_weights_;
-    auto d_gauss_points = canopy_model_.gauss_points_;
-    double extinction_coeff = canopy_model_.extinction_coeff();
+    const auto history = history_;
 
     // Standard constants (matching MeganScheme)
     constexpr double NORM_FAC = 1.0 / 1.0101081;
@@ -279,11 +278,12 @@ void Megan3Scheme::Run(CeceImportState& import_state, CeceExportState& export_st
                 return;
             }
 
-            // Averaged values (defaults when not dynamically passed)
-            double T_AVG_15 = 297.0;
-            double PAR_AVG = 400.0;
-            int doy = 180;
-            double dbtwn = 30.0;
+            // Effective scalar histories; state evolution belongs upstream.
+            const double T_AVG_15 = history.temperature_k;
+            const double PAR_AVG = history.par_wm2;
+            const int doy = history.day_of_year;
+            const double dbtwn = history.days_between_lai;
+            const double age_temperature = history.leaf_age_uses_history ? T_AVG_15 : T;
 
             double L_prev = has_lai_prev ? lai_prev(i, j, 0) : L;
             double gwet = has_soil_moist ? soil_moisture(i, j, 0) : 1.0;
@@ -291,7 +291,7 @@ void Megan3Scheme::Run(CeceImportState& import_state, CeceExportState& export_st
 
             // Compute shared gamma factors
             double g_lai = get_gamma_lai(L, LAI_C1, LAI_C2, false);
-            double g_age = get_gamma_age(L, L_prev, dbtwn, T, 1.0, 1.0, 1.0, 1.0);
+            double g_age = get_gamma_age(L, L_prev, dbtwn, age_temperature, 1.0, 1.0, 1.0, 1.0);
             double g_sm = get_gamma_sm(gwet, false);
             double g_par = get_gamma_par_pceea(pdr, pdf, PAR_AVG, sc, doy, WM2_TO_UMOL, PTOA_C1, PTOA_C2, GP_C1, GP_C2, GP_C3, GP_C4);
 
@@ -313,7 +313,7 @@ void Megan3Scheme::Run(CeceImportState& import_state, CeceExportState& export_st
 
                 // Per-class gamma factors
                 double g_lai_c = get_gamma_lai(L, LAI_C1, LAI_C2, bidir);
-                double g_age_c = get_gamma_age(L, L_prev, dbtwn, T, anew, agro, amat, aold);
+                double g_age_c = get_gamma_age(L, L_prev, dbtwn, age_temperature, anew, agro, amat, aold);
                 double g_t_li = get_gamma_t_li(T, beta, STD_TEMP);
                 double g_t_ld = get_gamma_t_ld(T, T_AVG_15, ct1, cleo, GAS_CONSTANT, CT2_CONST, T_OPT_C1, T_OPT_C2, E_OPT_COEFF);
 

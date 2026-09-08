@@ -8,12 +8,15 @@ CECE provides two MEGAN biogenic emission schemes:
   two emission methods:
   - `"native"` (default) — fully configurable MEGAN2.1 isoprene calculation.
   - `"hemco_3_12_1"` — source-pinned HEMCO 3.12.1 stateless source-conformance calculation.
-- **`megan3`** — Full MEGAN3 multi-species, multi-class emission system with 19 emission classes, 5-layer canopy model, and chemical mechanism speciation.
+- **`megan3`** — CECE's 19-class biogenic emission and chemical-speciation scheme. Its C++ runtime uses bulk activity factors; the available multilayer canopy helpers are not yet wired into that emission calculation. This is not a claim of complete or independently validated upstream MEGAN3 science.
 
 Both schemes coexist and can be selected independently via the YAML configuration.
 
 See [docs/hemco_megan_parity.md](hemco_megan_parity.md) for the exact implemented
 contract, limits, and validation terminology.
+
+See [executed-reference setup](megan_executed_reference.md) for the paired
+HEMCO runtime inputs and the native C++ MEGAN/MEGAN3 history controls.
 
 ---
 
@@ -101,7 +104,7 @@ the scheme fails before launching its kernel if those shapes differ.
 
 ## MEGAN3 (Multi-Species, Multi-Class)
 
-The full MEGAN3 scheme computes emissions for 19 biogenic emission classes, applies a comprehensive set of gamma factors including a 5-layer canopy model, and converts class totals to mechanism-specific output species via a configurable speciation engine.
+The C++ MEGAN3-class scheme computes 19 class totals using bulk activity factors and converts them to mechanism-specific output species via a configurable speciation engine. Its separate canopy helpers do not currently affect those runtime totals.
 
 ### Registration Names
 
@@ -153,7 +156,7 @@ emission[class] = NORM_FAC × AEF × γ_LAI × γ_age × γ_SM × γ_CO₂ × [(
 
 ### Canopy Model (MEGCANOPY)
 
-A 5-layer Gaussian quadrature canopy model computes:
+A separate, tested 5-layer Gaussian quadrature canopy helper provides the following calculations. These are not yet integrated into the C++ `Megan3Scheme::Run` emission calculation:
 - Beer-Lambert PAR extinction through the canopy
 - Sunlit/shaded leaf fractions at each layer
 - Leaf temperature via energy balance
