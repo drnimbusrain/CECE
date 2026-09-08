@@ -156,11 +156,16 @@ python scripts/generate_hemco_megan_oracle.py \
 - restart equivalence and multi-timestep validation
 - HEMCO solar angle calculated from latitude, local time, and model clock
 - gridded PFT fractions, AEF generation, LAI normalization, and dynamic land inputs
-- executed HEMCO-output comparison using identical effective inputs
 - real-meteorology validation
 - non-isoprene compounds and full MEGAN3 speciation
 
-An end-to-end parity claim requires a pinned HEMCO run, matching effective
-inputs and coordinate order, cellwise output comparison, and documented
-precision projection. Until then, plots produced from the example templates
-must be labeled as CECE source-reference comparisons.
+A separately executed HEMCO 3.12.1 comparison has validated the controlled
+one-hour, global 4x5 stateless effective-input case. See
+[executed-reference documentation](megan_executed_reference.md) for input
+matching, solar treatment, diagnostic-precision conventions and limitations.
+
+The checked-in scalar and synthetic-global tests establish source conformance;
+they do not execute HEMCO. The generic example templates and repository
+comparison script do not independently establish executed-reference parity.
+Additional reference cases, real meteorology and evolving-state/restart
+validation remain follow-up work.
