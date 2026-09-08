@@ -33,8 +33,10 @@ def _bounding_box_from_grid(grid: dict) -> Optional[tuple]:
     if not all(key in grid for key in required):
         return None
     return (
-        float(grid["lon_min"]), float(grid["lat_min"]),
-        float(grid["lon_max"]), float(grid["lat_max"]),
+        float(grid["lon_min"]),
+        float(grid["lat_min"]),
+        float(grid["lon_max"]),
+        float(grid["lat_max"]),
     )
 
 
@@ -768,7 +770,9 @@ class CeceConfig:
         # starts, rather than at the first timestep. Off by default because it
         # requires a live CMR query; enable with
         # cece_data.validate_earthaccess_short_names: true
-        if config_dict.get("cece_data", {}).get("validate_earthaccess_short_names", False):
+        if config_dict.get("cece_data", {}).get(
+            "validate_earthaccess_short_names", False
+        ):
             ea_streams = self._cece_data.get("earthaccess_streams", [])
             if ea_streams:
                 validate_short_names(ea_streams)

@@ -62,7 +62,12 @@ from .exceptions import (
     CeceStateError,
     CeceExecutionSpaceError,
 )
-from .config import CeceConfig, EmissionLayer, VerticalDistributionConfig, parse_earthaccess_streams
+from .config import (
+    CeceConfig,
+    EmissionLayer,
+    VerticalDistributionConfig,
+    parse_earthaccess_streams,
+)
 from .state import CeceState, CeceField
 from .utils import load_config
 from .earthaccess_resolver import (

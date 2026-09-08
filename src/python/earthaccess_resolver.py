@@ -162,7 +162,11 @@ class EarthAccessStreamResolver:
             fs_kwargs["cache_type"] = cfg.cache_type
 
         try:
-            file_objs = earthaccess.open(granules, **fs_kwargs) if fs_kwargs else earthaccess.open(granules)
+            file_objs = (
+                earthaccess.open(granules, **fs_kwargs)
+                if fs_kwargs
+                else earthaccess.open(granules)
+            )
         except TypeError:
             warnings.warn(
                 f"Installed earthaccess version does not accept block_size/cache_type "
@@ -179,7 +183,9 @@ class EarthAccessStreamResolver:
             engine="h5netcdf",
         )
 
-    def _try_open_virtual(self, cfg: EarthAccessStreamConfig, granules) -> Optional[xr.Dataset]:
+    def _try_open_virtual(
+        self, cfg: EarthAccessStreamConfig, granules
+    ) -> Optional[xr.Dataset]:
         """Attempt VirtualiZarr/DMR++-backed access; return None to fall back."""
         opener = getattr(earthaccess, "open_virtual_mfdataset", None)
         if opener is None:
