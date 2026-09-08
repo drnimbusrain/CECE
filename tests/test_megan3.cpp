@@ -693,6 +693,9 @@ RC_GTEST_PROP(Megan3SchemeProperty, Property17_MissingConfigDefaultValues, ()) {
 
 #include <filesystem>
 #include <fstream>
+#include <random>
+#include <stdexcept>
+#include <system_error>
 
 #include "cece/cece_physics_factory.hpp"
 #include "cece/physics/cece_megan3.hpp"
@@ -865,6 +868,46 @@ RC_GTEST_PROP(Megan3ParityProperty, Property15_CppFortranParity, ()) {
     std::filesystem::remove_all(tmp_dir);
 }
 
+namespace {
+
+class Megan3FortranSoilNOTempDir {
+   public:
+    Megan3FortranSoilNOTempDir() {
+        const auto parent = std::filesystem::temp_directory_path();
+        std::random_device random;
+        for (int attempt = 0; attempt < 128; ++attempt) {
+            path_ = parent /
+                    ("cece_test_megan3_fortran_soil_no_" + std::to_string(random()) + "_" + std::to_string(random()) + "_" + std::to_string(attempt));
+            std::error_code error;
+            // Own the directory only if this invocation created it atomically.
+            if (std::filesystem::create_directory(path_, error)) {
+                return;
+            }
+            if (error && error != std::errc::file_exists) {
+                throw std::filesystem::filesystem_error("Cannot create soil-NO test directory", path_, error);
+            }
+        }
+        throw std::runtime_error("Cannot create a unique soil-NO test directory after 128 attempts");
+    }
+
+    ~Megan3FortranSoilNOTempDir() noexcept {
+        std::error_code ignored;
+        std::filesystem::remove_all(path_, ignored);
+    }
+
+    Megan3FortranSoilNOTempDir(const Megan3FortranSoilNOTempDir&) = delete;
+    Megan3FortranSoilNOTempDir& operator=(const Megan3FortranSoilNOTempDir&) = delete;
+
+    const std::filesystem::path& path() const {
+        return path_;
+    }
+
+   private:
+    std::filesystem::path path_;
+};
+
+}  // namespace
+
 struct Megan3FortranSoilNOResult {
     double no;
     double isop;
@@ -875,9 +918,8 @@ Megan3FortranSoilNOResult RunMegan3FortranSoilNO(double lai_value, double soil_n
     constexpr int ny = 1;
     constexpr int nz = 1;
 
-    auto tmp_dir = std::filesystem::temp_directory_path() / "cece_test_megan3_fortran_soil_no";
-    std::filesystem::remove_all(tmp_dir);
-    std::filesystem::create_directories(tmp_dir);
+    const Megan3FortranSoilNOTempDir scratch;
+    const auto& tmp_dir = scratch.path();
 
     {
         std::ofstream f(tmp_dir / "spc.yaml");
@@ -933,7 +975,6 @@ Megan3FortranSoilNOResult RunMegan3FortranSoilNO(double lai_value, double soil_n
     no.sync_host();
     isop.sync_host();
     Megan3FortranSoilNOResult result{no.view_host()(0, 0, 0), isop.view_host()(0, 0, 0)};
-    std::filesystem::remove_all(tmp_dir);
     return result;
 }
 

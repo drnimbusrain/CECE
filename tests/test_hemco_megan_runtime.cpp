@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <cmath>
 #include <conf/config.hpp>
+#include <conf/error.hpp>
 #include <fstream>
 #include <limits>
 #include <numbers>
@@ -424,6 +425,151 @@ TEST_F(HEMCO3121MeganRuntime, RejectsInvalidConfiguration) {
     }
 }
 
+TEST_F(HEMCO3121MeganRuntime, ExplicitNumericAndBooleanSettingsRejectMalformedValues) {
+    const std::vector<std::pair<std::string, std::string>> settings = {
+        {"aef", "2.5e-9"},
+        {"hemco_day_of_year", "200"},
+        {"hemco_co2_inhibition", "true"},
+        {"hemco_co2_ppm", "415.0"},
+        {"hemco_par_direct_history_wm2", "31.234567891"},
+        {"hemco_par_diffuse_history_wm2", "47.543210987"},
+        {"hemco_temperature_history_k", "295.123456789"},
+    };
+    for (const auto& [key, valid_value] : settings) {
+        for (const std::string malformed_value : {"not-a-value", "null", "{value: 1}", "[1, 2]"}) {
+            SCOPED_TRACE(key + ": " + malformed_value);
+            const std::string yaml = ReplaceSetting(RuntimeConfig(), key + ": " + valid_value, key + ": " + malformed_value);
+            auto config = conf::Config::from_string(yaml);
+            MeganScheme scheme;
+            EXPECT_THROW(scheme.Initialize(config.root(), nullptr), conf::Conf_Error);
+        }
+    }
+}
+
+TEST_F(HEMCO3121MeganRuntime, ExplicitStringSettingsRejectNonscalarValues) {
+    const std::vector<std::pair<std::string, std::string>> settings = {
+        {"megan_method", "hemco_3_12_1"},
+        {"species_name", "isoprene"},
+        {"export_field_name", "runtime_isoprene"},
+    };
+    for (const auto& [key, valid_value] : settings) {
+        for (const std::string malformed_value : {"null", "{value: isoprene}", "[isoprene]"}) {
+            SCOPED_TRACE(key + ": " + malformed_value);
+            const std::string yaml =
+                ReplaceSetting(RuntimeConfig() + "species_name: isoprene\n", key + ": " + valid_value, key + ": " + malformed_value);
+            auto config = conf::Config::from_string(yaml);
+            MeganScheme scheme;
+            EXPECT_THROW(scheme.Initialize(config.root(), nullptr), conf::Conf_Error);
+        }
+    }
+}
+
+TEST_F(HEMCO3121MeganRuntime, DayAndSwitchRequireTheirDeclaredTypes) {
+    const std::vector<std::pair<std::string, std::string>> invalid_configs = {
+        {"fractional day", ReplaceSetting(RuntimeConfig(), "hemco_day_of_year: 200", "hemco_day_of_year: 200.5")},
+        {"numeric switch", ReplaceSetting(RuntimeConfig(), "hemco_co2_inhibition: true", "hemco_co2_inhibition: 1")},
+    };
+    for (const auto& [description, yaml] : invalid_configs) {
+        SCOPED_TRACE(description);
+        auto config = conf::Config::from_string(yaml);
+        MeganScheme scheme;
+        EXPECT_THROW(scheme.Initialize(config.root(), nullptr), conf::Conf_Error);
+    }
+}
+
+TEST_F(HEMCO3121MeganRuntime, SelectedAliasesAndPrimariesRejectMalformedValues) {
+    const std::vector<std::pair<std::string, std::string>> aliases = {{"aef", "aef_isop"}, {"hemco_co2_ppm", "co2_concentration"}};
+    for (const auto& [primary, alias] : aliases) {
+        const std::string valid_value = primary == "aef" ? "2.5e-9" : "415.0";
+        for (const std::string malformed_value : {"not-a-value", "null", "{value: 1}", "[1, 2]"}) {
+            SCOPED_TRACE(primary + " / " + alias + ": " + malformed_value);
+            const std::vector<std::string> invalid_configs = {
+                ReplaceSetting(RuntimeConfig(), primary + ": " + valid_value, alias + ": " + malformed_value),
+                ReplaceSetting(RuntimeConfig(), primary + ": " + valid_value, primary + ": " + malformed_value) + alias + ": " + valid_value + "\n",
+            };
+            for (const std::string& yaml : invalid_configs) {
+                SCOPED_TRACE(yaml);
+                auto config = conf::Config::from_string(yaml);
+                MeganScheme scheme;
+                EXPECT_THROW(scheme.Initialize(config.root(), nullptr), conf::Conf_Error);
+            }
+        }
+    }
+}
+
+TEST_F(HEMCO3121MeganRuntime, DisabledCO2StillRejectsMalformedExplicitConcentration) {
+    for (const std::string key : {"hemco_co2_ppm", "co2_concentration"}) {
+        for (const std::string malformed_value : {"not-a-value", "null", "{value: 1}", "[1, 2]"}) {
+            SCOPED_TRACE(key + ": " + malformed_value);
+            const std::string yaml = ReplaceSetting(RuntimeConfig(false), "hemco_co2_ppm: 415.0", key + ": " + malformed_value);
+            auto config = conf::Config::from_string(yaml);
+            MeganScheme scheme;
+            EXPECT_THROW(scheme.Initialize(config.root(), nullptr), conf::Conf_Error);
+        }
+    }
+}
+
+TEST_F(HEMCO3121MeganRuntime, ValidAliasesAndPrimaryPrecedencePreserveConfiguredValues) {
+    const std::string aliases_only = ReplaceSetting(ReplaceSetting(RuntimeConfig(), "aef:", "aef_isop:"), "hemco_co2_ppm:", "co2_concentration:");
+    const std::vector<std::pair<std::string, std::string>> valid_configs = {
+        {"aliases only", aliases_only},
+        {"primary values take precedence", RuntimeConfig() + "aef_isop: 1.0e-9\nco2_concentration: 700.0\n"},
+        {"unselected aliases are ignored", RuntimeConfig() + "aef_isop: null\nco2_concentration: {value: 700.0}\n"},
+        {"ISOP species alias", RuntimeConfig() + "species_name: ISOP\n"},
+    };
+    const CellInputs input;
+    const double expected = kRuntimeAef * IsopreneEmissionFactor(ScalarInputs(input));
+    for (const auto& [description, yaml] : valid_configs) {
+        SCOPED_TRACE(description);
+        auto config = conf::Config::from_string(yaml);
+        auto states = MakeStates(input);
+        MeganScheme scheme;
+        scheme.Initialize(config.root(), nullptr);
+        scheme.Run(states.import_state, states.export_state);
+        ExpectScalarMatch(ReadOutput(states), expected);
+    }
+}
+
+TEST_F(HEMCO3121MeganRuntime, QuotedConvertibleScalarsPreserveConfiguredValues) {
+    const std::string yaml =
+        "megan_method: 'hemco_3_12_1'\n"
+        "aef: '2.5e-9'\n"
+        "export_field_name: 'runtime_isoprene'\n"
+        "hemco_co2_ppm: '415.0'\n"
+        "hemco_co2_inhibition: 'true'\n"
+        "hemco_par_direct_history_wm2: '31.234567891'\n"
+        "hemco_par_diffuse_history_wm2: '47.543210987'\n"
+        "hemco_temperature_history_k: '295.123456789'\n"
+        "hemco_day_of_year: '200'\n";
+    auto config = conf::Config::from_string(yaml);
+    const CellInputs input;
+    auto states = MakeStates(input);
+    MeganScheme scheme;
+    scheme.Initialize(config.root(), nullptr);
+    scheme.Run(states.import_state, states.export_state);
+    ExpectScalarMatch(ReadOutput(states), kRuntimeAef * IsopreneEmissionFactor(ScalarInputs(input)));
+}
+
+TEST_F(HEMCO3121MeganRuntime, AbsentOptionalSettingsRetainColdStartDefaults) {
+    auto config = conf::Config::from_string("megan_method: hemco_3_12_1\naef: 2.5e-9\nhemco_day_of_year: 200\nhemco_co2_inhibition: false\n");
+    const CellInputs input;
+    auto states = MakeStates(input);
+    auto& output = states.export_state.fields["isoprene_emissions"];
+    output = MakeField("default_isoprene_output", 0.0);
+    MeganScheme scheme;
+    scheme.Initialize(config.root(), nullptr);
+    scheme.Run(states.import_state, states.export_state);
+
+    MeganInputs scalar = ScalarInputs(input, false);
+    scalar.co2_ppm = 390.0;
+    scalar.pardr_history_Wm2 = static_cast<double>(static_cast<float>(kParDirectHistoryWm2));
+    scalar.pardf_history_Wm2 = static_cast<double>(static_cast<float>(kParDiffuseHistoryWm2));
+    scalar.temperature_history_K = static_cast<double>(static_cast<float>(kTemperatureHistoryK));
+    output.sync_host();
+    ExpectScalarMatch(output.view_host()(0, 0, 0), kRuntimeAef * IsopreneEmissionFactor(scalar));
+    EXPECT_DOUBLE_EQ(ReadOutput(states), 0.0) << "The absent export field setting must select isoprene_emissions";
+}
+
 TEST_F(HEMCO3121MeganRuntime, RejectsObsoleteHistoryKeys) {
     const std::vector<std::string> obsolete_keys = {"hemco_par_avg_umol", "hemco_t_avg_15_k"};
     for (const std::string& key : obsolete_keys) {
@@ -530,6 +676,23 @@ TEST_F(HEMCO3121MeganRuntime, NativeModeRetainsMissingFieldNoOp) {
     scheme.Initialize(config.root(), nullptr);
     EXPECT_NO_THROW(scheme.Run(states.import_state, states.export_state));
     EXPECT_DOUBLE_EQ(ReadOutput(states), 0.0);
+}
+
+TEST_F(HEMCO3121MeganRuntime, AbsentMethodRetainsNativeDefault) {
+    const CellInputs input;
+    auto implicit_states = MakeStates(input);
+    auto explicit_states = MakeStates(input);
+    const std::string yaml = "aef: 2.5e-9\nexport_field_name: runtime_isoprene\n";
+    auto implicit_config = conf::Config::from_string(yaml);
+    auto explicit_config = conf::Config::from_string("megan_method: native\n" + yaml);
+    MeganScheme implicit_scheme;
+    MeganScheme explicit_scheme;
+    implicit_scheme.Initialize(implicit_config.root(), nullptr);
+    explicit_scheme.Initialize(explicit_config.root(), nullptr);
+    implicit_scheme.Run(implicit_states.import_state, implicit_states.export_state);
+    explicit_scheme.Run(explicit_states.import_state, explicit_states.export_state);
+    EXPECT_GT(ReadOutput(explicit_states), 0.0);
+    EXPECT_DOUBLE_EQ(ReadOutput(implicit_states), ReadOutput(explicit_states));
 }
 
 class HEMCO3121MeganOracle : public ::testing::TestWithParam<OracleRow> {};

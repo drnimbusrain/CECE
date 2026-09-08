@@ -49,7 +49,7 @@ void MeganScheme::Initialize(const conf::Value& config, CeceDiagnosticManager* d
     }
 
     // ---- Select emission method ----
-    megan_method_ = config["megan_method"].string_or("native");
+    megan_method_ = config["megan_method"].is_defined() ? config["megan_method"].as_string() : "native";
     if (megan_method_ != "native" && megan_method_ != "hemco_3_12_1") {
         throw std::invalid_argument("MeganScheme: unknown megan_method '" + megan_method_ + "'; expected 'native' or 'hemco_3_12_1'");
     }
@@ -67,20 +67,26 @@ void MeganScheme::Initialize(const conf::Value& config, CeceDiagnosticManager* d
         }
 
         // HEMCO configuration choice and no-restart defaults from the pinned source.
-        hemco_co2_inhibition_ = config["hemco_co2_inhibition"].bool_or(true);
-        if (hemco_co2_inhibition_ && !config["hemco_co2_ppm"].is_defined() && !config["co2_concentration"].is_defined()) {
+        hemco_co2_inhibition_ = config["hemco_co2_inhibition"].as_bool();
+        const auto co2_value = config["hemco_co2_ppm"].is_defined() ? config["hemco_co2_ppm"] : config["co2_concentration"];
+        if (hemco_co2_inhibition_ && !co2_value.is_defined()) {
             throw std::invalid_argument("MeganScheme: hemco_3_12_1 mode requires explicit 'hemco_co2_ppm' when CO2 inhibition is enabled");
         }
-        hemco_co2_ppm_ = config["hemco_co2_ppm"].double_or(config["co2_concentration"].double_or(390.0));
+        hemco_co2_ppm_ = co2_value.is_defined() ? co2_value.as_double() : 390.0;
+        // Defaults apply only to absent settings, never to malformed explicit values.
+        const auto optional_double = [&config](const std::string& key, double fallback) {
+            const auto value = config[key];
+            return value.is_defined() ? value.as_double() : fallback;
+        };
         // HEMCO stores all three history arrays as REAL(sp). Project YAML
         // values through float once before promoting them for scalar arithmetic.
         hemco_par_direct_history_wm2_ =
-            static_cast<double>(static_cast<float>(config["hemco_par_direct_history_wm2"].double_or(hemco_megan::v3_12_1::kParDirectHistoryWm2)));
+            static_cast<double>(static_cast<float>(optional_double("hemco_par_direct_history_wm2", hemco_megan::v3_12_1::kParDirectHistoryWm2)));
         hemco_par_diffuse_history_wm2_ =
-            static_cast<double>(static_cast<float>(config["hemco_par_diffuse_history_wm2"].double_or(hemco_megan::v3_12_1::kParDiffuseHistoryWm2)));
+            static_cast<double>(static_cast<float>(optional_double("hemco_par_diffuse_history_wm2", hemco_megan::v3_12_1::kParDiffuseHistoryWm2)));
         hemco_temperature_history_k_ =
-            static_cast<double>(static_cast<float>(config["hemco_temperature_history_k"].double_or(hemco_megan::v3_12_1::kTemperatureHistoryK)));
-        hemco_day_of_year_ = config["hemco_day_of_year"].int_or(hemco_megan::v3_12_1::kReferenceDoy);
+            static_cast<double>(static_cast<float>(optional_double("hemco_temperature_history_k", hemco_megan::v3_12_1::kTemperatureHistoryK)));
+        hemco_day_of_year_ = config["hemco_day_of_year"].as_int();
 
         if (hemco_co2_inhibition_ && (!std::isfinite(hemco_co2_ppm_) || hemco_co2_ppm_ < 150.0 || hemco_co2_ppm_ > 1250.0)) {
             throw std::invalid_argument("MeganScheme: hemco_co2_ppm must be in [150, 1250] when CO2 inhibition is enabled");
@@ -97,15 +103,15 @@ void MeganScheme::Initialize(const conf::Value& config, CeceDiagnosticManager* d
         }
 
         // AEF and export field still read from config in hemco_3_12_1 mode.
-        aef_ = config["aef"].double_or(config["aef_isop"].double_or(1.0e-9));
+        aef_ = config["aef"].is_defined() ? config["aef"].as_double() : config["aef_isop"].as_double();
         if (!std::isfinite(aef_) || aef_ < 0.0) {
             throw std::invalid_argument("MeganScheme: effective aef must be finite and nonnegative");
         }
-        species_name_ = config["species_name"].string_or("isoprene");
+        species_name_ = config["species_name"].is_defined() ? config["species_name"].as_string() : "isoprene";
         if (species_name_ != "isoprene" && species_name_ != "ISOP") {
             throw std::invalid_argument("MeganScheme: hemco_3_12_1 mode implements isoprene only; species_name must be 'isoprene' or 'ISOP'");
         }
-        export_field_name_ = config["export_field_name"].string_or("isoprene_emissions");
+        export_field_name_ = config["export_field_name"].is_defined() ? config["export_field_name"].as_string() : "isoprene_emissions";
 
         CECE_LOG_INFO("MeganScheme: initialized hemco_3_12_1 mode");
         return;
