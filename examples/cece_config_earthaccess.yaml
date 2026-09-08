@@ -22,15 +22,15 @@
 
 driver:
   start_time: "2022-07-01T00:00:00"
-  end_time:   "2022-07-03T23:00:00"
+  end_time: "2022-07-03T23:00:00"
   timestep_seconds: 3600
   # HEMCO reference 4x5 grid — matches PR #85 (SoilNOx) and PR #90 (MEGAN) parity grids
   grid:
     grid_name: "HEMCO_4x5"
     lon_min: -180.0
-    lon_max:  175.0
-    lat_min:  -89.0
-    lat_max:   89.0
+    lon_max: 175.0
+    lat_min: -89.0
+    lat_max: 89.0
 
 meteorology: {}
 
@@ -65,8 +65,8 @@ cece_data:
       version: "061"
       daac: LPDAAC_ECS
       cloud_hosted: true
-      temporal_start: "2022-06-25"   # overlap for prev-LAI interpolation
-      temporal_end:   "2022-07-04"
+      temporal_start: "2022-06-25" # overlap for prev-LAI interpolation
+      temporal_end: "2022-07-04"
       variables:
         Lai_500m: leaf_area_index
 
@@ -80,10 +80,10 @@ cece_data:
       daac: NSIDC_CPRD
       cloud_hosted: true
       temporal_start: "2022-07-01"
-      temporal_end:   "2022-07-04"
+      temporal_end: "2022-07-04"
       variables:
         sm_rootzone: soil_moisture_root
-        sm_surface:  soil_moisture
+        sm_surface: soil_moisture
 
     # ------------------------------------------------------------------
     # Soil temperature — SMAP L4 (same collection as above)
@@ -95,7 +95,7 @@ cece_data:
       daac: NSIDC_CPRD
       cloud_hosted: true
       temporal_start: "2022-07-01"
-      temporal_end:   "2022-07-04"
+      temporal_end: "2022-07-04"
       variables:
         soil_temp_layer1: soil_temperature
 
@@ -109,11 +109,11 @@ cece_data:
       daac: LARC_ASDC
       cloud_hosted: true
       temporal_start: "2022-07-01"
-      temporal_end:   "2022-07-04"
+      temporal_end: "2022-07-04"
       variables:
         sfc_sw_down_dir_all_1h: par_direct
         sfc_sw_down_dif_all_1h: par_diffuse
-        solar_zenith_angle:     solar_cosine
+        solar_zenith_angle: solar_cosine
 
     # ------------------------------------------------------------------
     # Wind speed at 10 m — ERA5 reanalysis (GES DISC mirror)
@@ -125,7 +125,7 @@ cece_data:
       daac: GES_DISC
       cloud_hosted: true
       temporal_start: "2022-07-01"
-      temporal_end:   "2022-07-04"
+      temporal_end: "2022-07-04"
       variables:
         u10: u_wind
         v10: v_wind
@@ -141,6 +141,6 @@ cece_data:
       daac: LPDAAC_ECS
       cloud_hosted: true
       temporal_start: "2022-01-01"
-      temporal_end:   "2022-12-31"
+      temporal_end: "2022-12-31"
       variables:
         LC_Type1: land_use_type

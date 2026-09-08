@@ -11,14 +11,14 @@
 
 driver:
   start_time: "2022-07-01T12:00:00"
-  end_time:   "2022-07-01T13:00:00"
+  end_time: "2022-07-01T13:00:00"
   timestep_seconds: 3600
   grid:
     grid_name: "HEMCO_4x5"
     lon_min: -180.0
-    lon_max:  175.0
-    lat_min:  -89.0
-    lat_max:   89.0
+    lon_max: 175.0
+    lat_min: -89.0
+    lat_max: 89.0
 
 meteorology: {}
 
@@ -36,7 +36,7 @@ physics_schemes:
   - name: bdsnp
     language: cpp
     options:
-      soil_no_method: hemco_3_12_1   # matches PR #85 parity mode
+      soil_no_method: hemco_3_12_1 # matches PR #85 parity mode
 
 cece_data:
   streams:
@@ -51,7 +51,7 @@ cece_data:
       daac: LPDAAC_ECS
       cloud_hosted: true
       temporal_start: "2022-06-25"
-      temporal_end:   "2022-07-04"
+      temporal_end: "2022-07-04"
       variables:
         Lai_500m: leaf_area_index
 
@@ -65,11 +65,11 @@ cece_data:
       daac: NSIDC_CPRD
       cloud_hosted: true
       temporal_start: "2022-07-01"
-      temporal_end:   "2022-07-02"
+      temporal_end: "2022-07-02"
       variables:
         soil_temp_layer1: soil_temperature
-        sm_rootzone:      soil_moisture_root
-        sm_surface:       soil_moisture
+        sm_rootzone: soil_moisture_root
+        sm_surface: soil_moisture
 
     # ------------------------------------------------------------------
     # CERES SYN1deg — direct/diffuse PAR and solar cosine (MEGAN3)
@@ -80,8 +80,8 @@ cece_data:
       daac: LARC_ASDC
       cloud_hosted: true
       temporal_start: "2022-07-01"
-      temporal_end:   "2022-07-02"
+      temporal_end: "2022-07-02"
       variables:
         sfc_sw_down_dir_all_1h: par_direct
         sfc_sw_down_dif_all_1h: par_diffuse
-        solar_zenith_angle:     solar_cosine
+        solar_zenith_angle: solar_cosine
