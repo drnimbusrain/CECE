@@ -20,7 +20,7 @@
 
 #include "cece/physics/cece_canopy_model.hpp"
 #include "cece/physics/cece_emission_activity.hpp"
-#include "cece/physics/cece_megan_history.hpp"
+#include "cece/physics/cece_megan.hpp"
 #include "cece/physics/cece_speciation_config.hpp"
 #include "cece/physics/cece_speciation_engine.hpp"
 #include "cece/physics_scheme.hpp"

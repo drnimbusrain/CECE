@@ -13,7 +13,7 @@ byte-identical output:
     python scripts/generate_hemco_megan_oracle.py \\
         > tests/data/hemco_megan/hemco_3_12_1_megan_reference.csv
 
-If any value changes, the pinned constants in hemco_megan_stateless.hpp
+If any value changes, the pinned constants in cece_megan.hpp
 must be audited before updating the CSV.
 """
 

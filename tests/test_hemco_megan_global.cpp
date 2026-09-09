@@ -16,7 +16,7 @@
 #include <numbers>
 #include <vector>
 
-#include "cece/physics/hemco_megan_stateless.hpp"
+#include "cece/physics/cece_megan.hpp"
 
 namespace {
 

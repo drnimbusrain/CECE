@@ -21,8 +21,8 @@
 #include <unordered_map>
 
 #include "cece/cece_physics_factory.hpp"
+#include "cece/physics/cece_megan.hpp"
 #include "cece/physics/cece_megan3_fortran.hpp"
-#include "cece/physics/cece_megan3_units.hpp"
 #include "cece/physics/cece_speciation_config.hpp"
 
 extern "C" {

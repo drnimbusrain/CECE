@@ -464,7 +464,7 @@ The source-pinned method follows
 Its source SHA-256 is
 `a298e4003210c7dba86c53cdd37f85a868dcb3a89b3de56ab175257e04614f31`.
 The device-callable implementation is in
-`include/cece/physics/hemco_megan_stateless.hpp`; the independent Python
+`include/cece/physics/cece_megan.hpp`; the independent Python
 transcription generates the scalar vectors in `tests/data/hemco_megan/`.
 
 | Quantity | Source-pinned treatment |
