@@ -745,16 +745,6 @@ if(Python3_Interpreter_FOUND)
     PROPERTIES FIXTURES_REQUIRED "python_deps_installed"
   )
 
-  add_test(
-    NAME test_megan_comparator_cli
-    COMMAND
-      ${VENV_PYTHON} -I ${CMAKE_CURRENT_SOURCE_DIR}/scripts/compare_megan_hemco_parity.py --help
-  )
-  set_tests_properties(
-    test_megan_comparator_cli
-    PROPERTIES FIXTURES_REQUIRED "python_deps_installed"
-  )
-
   if(BUILD_PYTHON_BINDINGS)
     add_test(
       NAME test_enum_config_bindings

@@ -49,9 +49,13 @@ void MeganScheme::Initialize(const conf::Value& config, CeceDiagnosticManager* d
     }
 
     // ---- Select emission method ----
-    megan_method_ = config["megan_method"].is_defined() ? config["megan_method"].as_string() : "native";
-    if (megan_method_ != "native" && megan_method_ != "hemco_3_12_1") {
-        throw std::invalid_argument("MeganScheme: unknown megan_method '" + megan_method_ + "'; expected 'native' or 'hemco_3_12_1'");
+    megan_method_ = config["megan_method"].is_defined() ? config["megan_method"].as_string() : "megan21";
+    // Preserve existing YAML files while giving the configurable MEGAN2.1 path
+    // an explicit name. The alias selects the same kernel and defaults.
+    if (megan_method_ == "native") megan_method_ = "megan21";
+    if (megan_method_ != "megan21" && megan_method_ != "hemco_3_12_1") {
+        throw std::invalid_argument("MeganScheme: unknown megan_method '" + megan_method_ +
+                                    "'; expected 'megan21' (legacy alias 'native') or 'hemco_3_12_1'");
     }
 
     // ---- HEMCO 3.12.1 source-conformance-mode settings ----
@@ -117,7 +121,7 @@ void MeganScheme::Initialize(const conf::Value& config, CeceDiagnosticManager* d
         return;
     }
 
-    // ---- Native-mode parameters ----
+    // ---- Configurable MEGAN2.1 parameters ----
     history_ = MeganHistory::FromConfig(config);
     gamma_co2_coeff_1_ = config["gamma_co2_coeff_1"].double_or(8.9406);
     gamma_co2_coeff_2_ = config["gamma_co2_coeff_2"].double_or(0.0024);
@@ -181,7 +185,7 @@ void MeganScheme::Run(CeceImportState& import_state, CeceExportState& export_sta
                                                         {MapOutput(export_field_name_), emissions_out.data() != nullptr}});
     }
 
-    // Preserve the native scheme's historical no-op behavior when a field is
+    // Preserve the configurable MEGAN2.1 path's historical no-op when a field is
     // absent. The HEMCO source-conformance mode above instead fails closed.
     if (temp.data() == nullptr || emissions_out.data() == nullptr || lai.data() == nullptr || pardr.data() == nullptr || pardf.data() == nullptr ||
         suncos.data() == nullptr) {
@@ -269,7 +273,7 @@ void MeganScheme::Run(CeceImportState& import_state, CeceExportState& export_sta
     }
 
     // ============================================================
-    // Native-mode kernel (original)
+    // Configurable MEGAN2.1 kernel (unchanged; also selected by legacy "native")
     // ============================================================
     double beta = beta_, ct1 = ct1_, ceo = ceo_, ldf = ldf_, aef = aef_;
     double lai_c1 = lai_coeff_1_, lai_c2 = lai_coeff_2_, std_t = standard_temp_;

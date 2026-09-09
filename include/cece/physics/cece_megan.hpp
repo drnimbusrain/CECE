@@ -137,12 +137,13 @@ double get_gamma_co2(double co2a, double c1, double c2, bool use_wilkinson) {
 
 /**
  * @class MeganScheme
- * @brief Native C++ implementation of the MEGAN biogenics emission scheme.
+ * @brief C++ implementation of the MEGAN biogenics emission scheme.
  *
  * Supported `megan_method` values:
- *   - `"native"` (default) — fully configurable MEGAN2.1 isoprene calculation.
+ *   - `"megan21"` (default) - fully configurable MEGAN2.1 isoprene calculation.
+ *     `"native"` remains a compatibility alias with identical behavior.
  *   - `"hemco_3_12_1"` — source-pinned HEMCO 3.12.1 stateless cell arithmetic
- *     using frozen constants from hemco_megan_stateless.hpp. All native-mode
+ *     using frozen constants from hemco_megan_stateless.hpp. All megan21-mode
  *     tuning parameters are ignored. HEMCO restart-derived temperature and
  *     direct/diffuse PAR histories are explicit scalar options in this mode;
  *     the mode consumes them but does not evolve them. HEMCO's one-day LAI
@@ -160,7 +161,7 @@ class MeganScheme : public BasePhysicsScheme {
 
    private:
     // ---- Emission method selection ----
-    std::string megan_method_ = "native";  // "native" or "hemco_3_12_1"
+    std::string megan_method_ = "megan21";  // Normalized value: "megan21" or "hemco_3_12_1".
 
     // ---- HEMCO 3.12.1 source-conformance-mode settings ----
     double hemco_co2_ppm_ = 390.0;  ///< selected reference-case CO₂ [ppm]
@@ -170,7 +171,7 @@ class MeganScheme : public BasePhysicsScheme {
     double hemco_temperature_history_k_ = hemco_megan::v3_12_1::kTemperatureHistoryK;
     int hemco_day_of_year_ = hemco_megan::v3_12_1::kReferenceDoy;
 
-    // ---- Native-mode parameters (ignored in hemco_3_12_1 mode) ----
+    // ---- Configurable MEGAN2.1 parameters (ignored in hemco_3_12_1 mode) ----
     MeganHistory history_;
     double gamma_co2_ = 0.0;
     double beta_ = 0.13;

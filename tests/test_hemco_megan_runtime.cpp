@@ -667,32 +667,95 @@ TEST_F(HEMCO3121MeganRuntime, InvalidSolarCosineFailsClosed) {
     }
 }
 
-TEST_F(HEMCO3121MeganRuntime, NativeModeRetainsMissingFieldNoOp) {
-    auto config = conf::Config::from_string("megan_method: native\nexport_field_name: runtime_isoprene\n");
-    auto states = MakeStates(CellInputs{});
-    states.import_state.fields.erase("par_diffuse");
+TEST_F(HEMCO3121MeganRuntime, Megan21SelectorsRetainMissingFieldNoOp) {
+    for (const std::string selector : {"", "megan_method: native\n", "megan_method: megan21\n"}) {
+        SCOPED_TRACE(selector);
+        auto config = conf::Config::from_string(selector + "export_field_name: runtime_isoprene\n");
+        auto states = MakeStates(CellInputs{});
+        states.import_state.fields.erase("par_diffuse");
 
-    MeganScheme scheme;
-    scheme.Initialize(config.root(), nullptr);
-    EXPECT_NO_THROW(scheme.Run(states.import_state, states.export_state));
-    EXPECT_DOUBLE_EQ(ReadOutput(states), 0.0);
+        MeganScheme scheme;
+        scheme.Initialize(config.root(), nullptr);
+        EXPECT_NO_THROW(scheme.Run(states.import_state, states.export_state));
+        EXPECT_DOUBLE_EQ(ReadOutput(states), 0.0);
+    }
 }
 
-TEST_F(HEMCO3121MeganRuntime, AbsentMethodRetainsNativeDefault) {
+TEST_F(HEMCO3121MeganRuntime, Megan21NativeAliasAndOmittedSelectorMatchExactlyAcrossGridAndRepeatedRuns) {
+    const std::vector<CellInputs> cells = {
+        {307.0, 4.123456789, 2.234567891, 240.0, 65.0, 0.78},
+        {293.0, 2.5, 3.0, 80.0, 20.0, 0.35},
+        {280.0, 0.0, 1.0, 0.0, 0.0, -0.2},
+        {303.0, 4.0, 4.0, 0.0, 0.0, 0.0},
+        {313.0, 6.0, 3.0, 320.0, 85.0, 0.90},
+        {300.0, 1.0, 1.0, 120.0, 30.0, 0.6},
+    };
+    constexpr int nx = 2;
+    constexpr int ny = 3;
+    const std::vector<std::pair<std::string, double CellInputs::*>> fields = {
+        {"temperature", &CellInputs::temperature_k}, {"leaf_area_index", &CellInputs::lai},         {"leaf_area_index_prev", &CellInputs::lai_prev},
+        {"par_direct", &CellInputs::par_direct_wm2}, {"par_diffuse", &CellInputs::par_diffuse_wm2}, {"solar_cosine", &CellInputs::solar_cosine},
+    };
+    const auto run_selector = [&](const std::string& selector, const std::string& settings) {
+        OneCellStates states;
+        for (const auto& [name, member] : fields) {
+            auto field = MakeField(name, 0.0, nx, ny);
+            for (int j = 0; j < ny; ++j) {
+                for (int i = 0; i < nx; ++i) {
+                    field.view_host()(i, j, 0) = cells[i + nx * j].*member;
+                }
+            }
+            field.modify_host();
+            field.sync_device();
+            states.import_state.fields[name] = field;
+        }
+        // Nonzero initial output detects accidental replacement of additive behavior.
+        states.export_state.fields[OutputFieldName()] = MakeField("selector_output", 1.0e-12, nx, ny);
+        auto config = conf::Config::from_string(selector + "export_field_name: runtime_isoprene\n" + settings);
+        MeganScheme scheme;
+        scheme.Initialize(config.root(), nullptr);
+        std::vector<std::vector<double>> results;
+        for (int step = 0; step < 3; ++step) {
+            scheme.Run(states.import_state, states.export_state);
+            auto& output = states.export_state.fields.at(OutputFieldName());
+            output.sync_host();
+            std::vector<double> values;
+            for (int j = 0; j < ny; ++j) {
+                for (int i = 0; i < nx; ++i) values.push_back(output.view_host()(i, j, 0));
+            }
+            results.push_back(values);
+        }
+        return results;
+    };
+    const std::vector<std::string> configurations = {
+        "",
+        "aef: 2.5e-9\nco2_concentration: 415.0\ntemperature_history_k: 288.15\npar_history_wm2: 78.0\n"
+        "days_between_lai: 1.0\nday_of_year: 171\nleaf_age_uses_temperature_history: true\n",
+    };
+    for (const std::string& settings : configurations) {
+        SCOPED_TRACE(settings);
+        const auto implicit_results = run_selector("", settings);
+        const auto legacy_results = run_selector("megan_method: native\n", settings);
+        const auto preferred_results = run_selector("megan_method: megan21\n", settings);
+        EXPECT_EQ(implicit_results, legacy_results);
+        EXPECT_EQ(preferred_results, legacy_results);
+        EXPECT_GT(preferred_results.front()[0], 1.0e-12);
+        EXPECT_GT(preferred_results.back()[0], preferred_results.front()[0]);
+        for (const auto& step : preferred_results) {
+            EXPECT_EQ(step[2], 1.0e-12) << "Zero-LAI cells retain preexisting output";
+            EXPECT_EQ(step[3], 1.0e-12) << "The default fully light-dependent calculation adds no nighttime flux";
+        }
+    }
+}
+
+TEST_F(HEMCO3121MeganRuntime, SourceMethodRemainsSeparateFromConfigurableMegan21Settings) {
     const CellInputs input;
-    auto implicit_states = MakeStates(input);
-    auto explicit_states = MakeStates(input);
-    const std::string yaml = "aef: 2.5e-9\nexport_field_name: runtime_isoprene\n";
-    auto implicit_config = conf::Config::from_string(yaml);
-    auto explicit_config = conf::Config::from_string("megan_method: native\n" + yaml);
-    MeganScheme implicit_scheme;
-    MeganScheme explicit_scheme;
-    implicit_scheme.Initialize(implicit_config.root(), nullptr);
-    explicit_scheme.Initialize(explicit_config.root(), nullptr);
-    implicit_scheme.Run(implicit_states.import_state, implicit_states.export_state);
-    explicit_scheme.Run(explicit_states.import_state, explicit_states.export_state);
-    EXPECT_GT(ReadOutput(explicit_states), 0.0);
-    EXPECT_DOUBLE_EQ(ReadOutput(implicit_states), ReadOutput(explicit_states));
+    auto states = MakeStates(input);
+    auto config = conf::Config::from_string(RuntimeConfig() + "ldf: 0.0\nptoa_coeff_1: 1234.0\npar_history_wm2: 900.0\n");
+    MeganScheme scheme;
+    scheme.Initialize(config.root(), nullptr);
+    scheme.Run(states.import_state, states.export_state);
+    ExpectScalarMatch(ReadOutput(states), kRuntimeAef * IsopreneEmissionFactor(ScalarInputs(input)));
 }
 
 class HEMCO3121MeganOracle : public ::testing::TestWithParam<OracleRow> {};
