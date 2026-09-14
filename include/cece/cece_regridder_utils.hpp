@@ -35,12 +35,11 @@ axis::topology::UnstructuredMesh<Kokkos::HostSpace> build_band_mesh_with_global_
 /// Build the destination sub-mesh for a CURVILINEAR latitude band [j0, j1) with
 /// GLOBALLY-CONSISTENT 2-D cell corners. The band's boundary corners depend on
 /// neighbour centers in both longitude and latitude, so they are derived from the
-/// FULL global curvilinear center arrays via the same AXIS shared corner-synthesis
-/// kernel used for the rectilinear band (axis::topology::synthesize_band_corners),
-/// then pinned with set_corners. This makes the curvilinear band conservative
-/// regrid match the corresponding rows of the global regrid at the seams, and
-/// leaves a whole-grid (single-rank) band byte-for-byte identical to the global
-/// mesh. `full_center_lon`/`full_center_lat` are the flattened global centers
+/// FULL global curvilinear center arrays by building the full global AXIS mesh
+/// and extracting the requested band cells. This makes the curvilinear band
+/// conservative regrid match the corresponding rows of the global regrid at the
+/// seams, and leaves a whole-grid (single-rank) band byte-for-byte identical to
+/// the global mesh. `full_center_lon`/`full_center_lat` are the flattened global centers
 /// (length nx * ny_global, index i + j*nx); `band_center_lon`/`band_center_lat`
 /// are the band's nx * (j1 - j0) centers (the global rows [j0, j1)).
 axis::topology::UnstructuredMesh<Kokkos::HostSpace> build_band_mesh_curvilinear_with_global_corners(int nx, int j0, int j1,
