@@ -13,7 +13,7 @@
 #   pip install 'cece-tools[cloud]'
 #
 # Physics schemes demonstrated:
-#   - megan3  : biogenic VOC emissions (needs LAI, PAR, soil moisture)
+#   - megan3  : biogenic VOC emissions (needs 2 m temperature, LAI, PAR, solar angle, soil moisture)
 #   - bdsnp   : soil NO emissions (needs soil temperature + moisture)
 #   - fengsha : wind-blown dust (needs soil properties, friction velocity)
 #
@@ -57,7 +57,7 @@ cece_data:
   streams:
     # ------------------------------------------------------------------
     # Leaf Area Index — MODIS MCD15A2H (LP DAAC, 500 m, 8-day)
-    # Provides: leaf_area_index, leaf_area_index_prev (from prior cycle)
+    # Provides: leaf_area_index (current cycle)
     # ------------------------------------------------------------------
     - name: modis_lai
       source: earthaccess
@@ -65,10 +65,39 @@ cece_data:
       version: "061"
       daac: LPDAAC_ECS
       cloud_hosted: true
-      temporal_start: "2022-06-25" # overlap for prev-LAI interpolation
+      temporal_start: "2022-06-25"
       temporal_end: "2022-07-04"
       variables:
         Lai_500m: leaf_area_index
+
+    # ------------------------------------------------------------------
+    # Previous Leaf Area Index — same MODIS collection, prior 8-day cycle
+    # Provides: leaf_area_index_prev (MEGAN3 leaf-age response)
+    # ------------------------------------------------------------------
+    - name: modis_lai_previous
+      source: earthaccess
+      short_name: MCD15A2H
+      version: "061"
+      daac: LPDAAC_ECS
+      cloud_hosted: true
+      temporal_start: "2022-06-17"
+      temporal_end: "2022-06-30"
+      variables:
+        Lai_500m: leaf_area_index_prev
+
+    # ------------------------------------------------------------------
+    # 2-meter air temperature — MERRA-2 single-level diagnostics (GES DISC)
+    # Provides: temperature (MEGAN3 air temperature, K)
+    # ------------------------------------------------------------------
+    - name: merra2_temperature_2m
+      source: earthaccess
+      short_name: M2T1NXSLV
+      daac: GES_DISC
+      cloud_hosted: true
+      temporal_start: "2022-07-01"
+      temporal_end: "2022-07-04"
+      variables:
+        T2M: temperature
 
     # ------------------------------------------------------------------
     # Root-zone and surface soil moisture — SMAP L4 (NSIDC, 3-hourly)
@@ -116,19 +145,18 @@ cece_data:
         solar_zenith_angle: solar_cosine
 
     # ------------------------------------------------------------------
-    # Wind speed at 10 m — ERA5 reanalysis (GES DISC mirror)
-    # Provides: wind_speed (sea-salt, DMS, dust schemes)
+    # Surface wind speed — MERRA-2 surface flux diagnostics (GES DISC)
+    # Provides: wind_speed (optional MEGAN3 wind stress; also used by dust-like schemes)
     # ------------------------------------------------------------------
-    - name: era5_wind
+    - name: merra2_surface_wind
       source: earthaccess
-      short_name: ERA5_SURFACE_1HR
+      short_name: M2T1NXFLX
       daac: GES_DISC
       cloud_hosted: true
       temporal_start: "2022-07-01"
       temporal_end: "2022-07-04"
       variables:
-        u10: u_wind
-        v10: v_wind
+        SPEED: wind_speed
 
     # ------------------------------------------------------------------
     # Soil texture fractions — STATSGO/FAO (static, LP DAAC)
