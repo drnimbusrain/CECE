@@ -6,11 +6,13 @@
 #include <algorithm>
 #include <axis/axis.hpp>
 #include <cctype>
+#include <cstdlib>
 #include <conf/conf.hpp>
 #include <dagr/logging.hpp>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <tick/tick.hpp>
 #include <vector>
@@ -163,6 +165,47 @@ RecordBracket cadence_record_bracket(const std::string& cadence, const std::stri
     return br;
 }
 
+std::string shell_quote(const std::string& value) {
+    std::string quoted = "'";
+    for (char ch : value) {
+        if (ch == '\'') {
+            quoted += "'\\''";
+        } else {
+            quoted += ch;
+        }
+    }
+    quoted += "'";
+    return quoted;
+}
+
+bool write_vector_file(const fs::path& path, const std::vector<double>& values) {
+    std::ofstream out(path);
+    if (!out) return false;
+    out.precision(17);
+    for (double value : values) {
+        out << value << '\n';
+    }
+    return true;
+}
+
+fs::path resolve_earthaccess_helper(const std::string& config_file) {
+    if (const char* configured = std::getenv("CECE_EARTHACCESS_HELPER")) {
+        if (*configured != '\0') return fs::path(configured);
+    }
+
+    const fs::path cwd_helper = fs::current_path() / "scripts" / "cece_earthaccess_standalone_ingest.py";
+    if (fs::exists(cwd_helper)) return cwd_helper;
+
+    const fs::path config_path = fs::absolute(fs::path(config_file));
+    for (fs::path dir = config_path.parent_path(); !dir.empty(); dir = dir.parent_path()) {
+        const fs::path candidate = dir / "scripts" / "cece_earthaccess_standalone_ingest.py";
+        if (fs::exists(candidate)) return candidate;
+        if (dir == dir.root_path()) break;
+    }
+
+    return cwd_helper;
+}
+
 }  // namespace
 
 CeceDriverOrchestrator::CeceDriverOrchestrator(const std::string& config_file, int nx, int ny, int nz, const double* lon_coords, int lon_len,
@@ -204,8 +247,9 @@ CeceDriverOrchestrator::CeceDriverOrchestrator(const std::string& config_file, i
             for (std::size_t si = 0; si < streams.size(); ++si) {
                 conf::Value stream = streams[si];
                 if (stream["source"].string_or("") == "earthaccess") {
-                    CECE_LOG_WARNING("[DRIVER] Skipping earthaccess stream '" + stream["name"].string_or("<unnamed>") +
-                                     "' in the native AMIO driver path. Earthaccess streams must be opened and injected by the Python bridge.");
+                    has_earthaccess_streams_ = true;
+                    CECE_LOG_INFO("[DRIVER] Deferring earthaccess stream '" + stream["name"].string_or("<unnamed>") +
+                                  "' to the standalone Earthaccess ingestion helper.");
                     continue;
                 }
                 std::string stream_file = stream["file"].string_or("");
@@ -289,6 +333,127 @@ CeceDriverOrchestrator::~CeceDriverOrchestrator() {
     cece_io_.reset();
 }
 
+bool CeceDriverOrchestrator::IngestEarthAccessStreams(const std::string& time_iso8601, void* cece_core_data_ptr) {
+    if (!has_earthaccess_streams_) return true;
+    if (!cece_core_data_ptr) return false;
+
+    int rank = 0;
+    int mpi_initialized = 0;
+    MPI_Initialized(&mpi_initialized);
+    if (mpi_initialized && comm_c_ != MPI_COMM_NULL) {
+        MPI_Comm_rank(comm_c_, &rank);
+    }
+
+    const fs::path work_dir = fs::absolute(fs::path(".cece_earthaccess_cache") / ("step_" + std::to_string(step_index_)));
+    const fs::path lon_file = work_dir / "target_lons.txt";
+    const fs::path lat_file = work_dir / "target_lats.txt";
+    const fs::path manifest_file = work_dir / "manifest.txt";
+
+    int helper_status = 0;
+    if (rank == 0) {
+        std::error_code ec;
+        fs::remove_all(work_dir, ec);
+        fs::create_directories(work_dir, ec);
+        if (ec) {
+            CECE_LOG_ERROR("[DRIVER] Failed to create earthaccess work directory '" + work_dir.string() + "': " + ec.message());
+            helper_status = 1;
+        } else if (!write_vector_file(lon_file, target_lons_) || !write_vector_file(lat_file, target_lats_)) {
+            CECE_LOG_ERROR("[DRIVER] Failed to write earthaccess target grid coordinate files in '" + work_dir.string() + "'");
+            helper_status = 1;
+        } else {
+            const char* python_env = std::getenv("CECE_PYTHON");
+            const std::string python = (python_env && *python_env != '\0') ? python_env : "python3";
+            const fs::path helper = resolve_earthaccess_helper(config_file_);
+            if (!fs::exists(helper)) {
+                CECE_LOG_ERROR("[DRIVER] Earthaccess helper not found at '" + helper.string() +
+                               "'. Set CECE_EARTHACCESS_HELPER or run from the CECE repository root.");
+                helper_status = 1;
+            } else {
+                std::ostringstream command;
+                command << shell_quote(python) << " " << shell_quote(helper.string()) << " --config " << shell_quote(config_file_) << " --time "
+                        << shell_quote(time_iso8601) << " --output-dir " << shell_quote(work_dir.string()) << " --lon-file "
+                        << shell_quote(lon_file.string()) << " --lat-file " << shell_quote(lat_file.string());
+                CECE_LOG_INFO("[DRIVER] Fetching earthaccess streams for " + time_iso8601);
+                helper_status = std::system(command.str().c_str());
+                if (helper_status != 0) {
+                    CECE_LOG_ERROR("[DRIVER] Earthaccess ingestion helper failed with status " + std::to_string(helper_status));
+                }
+            }
+        }
+    }
+
+    if (mpi_initialized && comm_c_ != MPI_COMM_NULL) {
+        MPI_Bcast(&helper_status, 1, MPI_INT, 0, comm_c_);
+        MPI_Barrier(comm_c_);
+    }
+    if (helper_status != 0) return false;
+
+    std::ifstream manifest(manifest_file);
+    if (!manifest) {
+        CECE_LOG_ERROR("[DRIVER] Earthaccess manifest not found: " + manifest_file.string());
+        return false;
+    }
+
+    std::string field_name;
+    int field_nx = 0;
+    int field_ny = 0;
+    int field_nz = 0;
+    std::string binary_name;
+    double min_value = 0.0;
+    double max_value = 0.0;
+    while (manifest >> field_name >> field_nx >> field_ny >> field_nz >> binary_name >> min_value >> max_value) {
+        if (field_nx != nx_ || field_ny != ny_ || field_nz != 1) {
+            CECE_LOG_ERROR("[DRIVER] Earthaccess field '" + field_name + "' has shape " + std::to_string(field_nx) + "x" +
+                           std::to_string(field_ny) + "x" + std::to_string(field_nz) + ", expected " + std::to_string(nx_) + "x" +
+                           std::to_string(ny_) + "x1");
+            return false;
+        }
+
+        const fs::path binary_path = work_dir / binary_name;
+        std::ifstream data_file(binary_path, std::ios::binary);
+        if (!data_file) {
+            CECE_LOG_ERROR("[DRIVER] Earthaccess field data file not found: " + binary_path.string());
+            return false;
+        }
+        std::vector<double> values(static_cast<std::size_t>(nx_) * ny_);
+        data_file.read(reinterpret_cast<char*>(values.data()), static_cast<std::streamsize>(values.size() * sizeof(double)));
+        if (data_file.gcount() != static_cast<std::streamsize>(values.size() * sizeof(double))) {
+            CECE_LOG_ERROR("[DRIVER] Short read from earthaccess field data file: " + binary_path.string());
+            return false;
+        }
+
+        int rc = 0;
+        cece_ingestor_set_field(cece_core_data_ptr, field_name.c_str(), static_cast<int>(field_name.length()), values.data(), 1, nx_ * ny_, &rc);
+        if (rc != 0) {
+            CECE_LOG_ERROR("[DRIVER] cece_ingestor_set_field failed for earthaccess field '" + field_name + "' with rc=" + std::to_string(rc));
+            return false;
+        }
+
+        auto* d = static_cast<cece::CeceInternalData*>(cece_core_data_ptr);
+        auto it_core = d->import_state.fields.find(field_name);
+        if (it_core == d->import_state.fields.end()) {
+            cece::DualView3D dv(field_name, nx_, ny_, 1);
+            d->import_state.fields[field_name] = dv;
+            it_core = d->import_state.fields.find(field_name);
+        }
+        auto& core_field = it_core->second;
+        auto h_view = Kokkos::create_mirror_view(core_field.view_device());
+        for (int j = 0; j < ny_; ++j) {
+            for (int i = 0; i < nx_; ++i) {
+                h_view(i, j, 0) = values[static_cast<std::size_t>(j) * nx_ + i];
+            }
+        }
+        Kokkos::deep_copy(core_field.view_device(), h_view);
+        core_field.modify_device();
+        core_field.sync_host();
+
+        CECE_LOG_INFO("[DRIVER] Earthaccess field '" + field_name + "' ingested for " + time_iso8601 + " (min=" + std::to_string(min_value) +
+                      ", max=" + std::to_string(max_value) + ")");
+    }
+
+    return true;
+}
+
 bool CeceDriverOrchestrator::AdvanceTime(const std::string& time_iso8601, void* cece_core_data_ptr) {
     if (!cece_core_data_ptr) return false;
 
@@ -300,6 +465,11 @@ bool CeceDriverOrchestrator::AdvanceTime(const std::string& time_iso8601, void* 
     // select the correct file record; streams without a cadence keep the
     // legacy step-index cycling behaviour and ignore this.
     const SimDateTime sim_dt = parse_sim_datetime(time_iso8601);
+
+    if (!IngestEarthAccessStreams(time_iso8601, cece_core_data_ptr)) {
+        LogFatal("[DRIVER FATAL] Earthaccess stream ingestion failed for timestep '" + time_iso8601 + "'");
+        return false;
+    }
 
     // B. Push CeceIO's newly computed emission views into CECE's data ingestor
     for (const auto& var_name : cece_io_->GetOutputVarNames()) {

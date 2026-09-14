@@ -113,6 +113,14 @@ def _load_src(name: str):
 _ea_resolver_mod = _load_src("earthaccess_resolver")
 _stream_bridge_mod = _load_src("stream_bridge")
 
+_standalone_spec = _ilu.spec_from_file_location(
+    "cece_earthaccess_standalone_ingest",
+    str(_REPO_ROOT / "scripts" / "cece_earthaccess_standalone_ingest.py"),
+)
+_standalone_ingest_mod = _ilu.module_from_spec(_standalone_spec)
+sys.modules["cece_earthaccess_standalone_ingest"] = _standalone_ingest_mod
+_standalone_spec.loader.exec_module(_standalone_ingest_mod)
+
 # config.py uses `from .earthaccess_resolver import ...`; inject the already-
 # loaded module so the relative import resolves correctly when config is loaded.
 sys.modules["earthaccess_resolver"] = _ea_resolver_mod
@@ -712,6 +720,29 @@ class TestEarthAccessStreamBridgeMocked:
 
         with pytest.raises(ValueError, match="solar_cosine.*transform"):
             bridge.inject_at_time(state, datetime(2022, 7, 1, 12, 0, 0))
+
+
+class TestStandaloneEarthAccessIngestHelper:
+    """Non-network coverage for the native driver's Earthaccess helper."""
+
+    def test_helper_cos_degrees_transform(self):
+        values = np.array([[0.0, 60.0, 90.0, 120.0]], dtype=np.float64)
+        transformed = _standalone_ingest_mod._apply_transform(values, "cos_degrees")
+        assert np.allclose(transformed, [[1.0, 0.5, 0.0, 0.0]])
+
+    def test_helper_interpolates_to_target_grid(self):
+        ds = xr.Dataset(
+            {"temperature": (["time", "lat", "lon"], np.array([[[280.0, 281.0], [290.0, 291.0]]]))},
+            coords={"time": TIME_COORD[:1], "lat": np.array([-45.0, 45.0]), "lon": np.array([-90.0, 90.0])},
+        )
+        selected = _standalone_ingest_mod._select_time(
+            ds["temperature"], np.datetime64("2022-07-01T00:00:00")
+        )
+        values = _standalone_ingest_mod._interp_to_target(
+            selected, np.array([-90.0, 90.0]), np.array([-45.0, 45.0])
+        )
+        assert values.shape == (2, 2)
+        assert np.allclose(values, [[280.0, 281.0], [290.0, 291.0]])
 
 
 # =============================================================================

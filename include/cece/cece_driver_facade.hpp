@@ -47,6 +47,7 @@ class CeceDriverOrchestrator {
     bool AssembleReplicatedField(const std::string& var_name, const io::RegridPlan& plan, const std::vector<double>& source, int file_nx, int file_ny,
                                  int field_nlev, DeviceView3D stream_view, void* cece_core_data_ptr, std::vector<double>& ingest_buffer,
                                  std::string& failure_detail);
+    bool IngestEarthAccessStreams(const std::string& time_iso8601, void* cece_core_data_ptr);
 
     std::string config_file_;
     int nx_{0}, ny_{0}, nz_{0};
@@ -62,6 +63,7 @@ class CeceDriverOrchestrator {
     // and reused for every timestep.
     std::unordered_map<std::string, io::RegridPlan> regrid_plans_;
     std::unordered_map<std::string, int> file_nt_cache_;
+    bool has_earthaccess_streams_{false};
 
     // HELM Orchestration and pipeline components
     std::unique_ptr<dagr::GraphOrchestrator> dagr_;

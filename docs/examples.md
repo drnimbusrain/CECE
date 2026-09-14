@@ -157,6 +157,14 @@ Run the live Earthdata tests with:
 pytest tests/test_earthaccess_stream_bdsnp_megan3.py -v -m live_earthdata
 ```
 
+The native standalone driver also uses the cloud extras when a config contains `source: earthaccess` streams. It invokes `scripts/cece_earthaccess_standalone_ingest.py` at each timestep, then injects the returned arrays into the C++ import state before physics runs. Run the driver from the CECE repository root, or set `CECE_EARTHACCESS_HELPER` to the helper path. Set `CECE_PYTHON` if the `earthaccess` environment is not the default `python3`:
+
+```bash
+export CECE_PYTHON=/path/to/venv/bin/python
+export CECE_EARTHACCESS_HELPER=/path/to/CECE/scripts/cece_earthaccess_standalone_ingest.py
+./build/bin/cece_nuopc_driver examples/cece_config_earthaccess_megan3.yaml
+```
+
 Earthaccess variable mappings can also apply simple transforms before fields are injected into CECE. For example, MEGAN3 expects `solar_cosine` in the range `[0, 1]`, while some NASA products expose solar zenith angle in degrees. Use `transform: cos_degrees` to convert degrees to daylight cosine during injection:
 
 ```yaml
