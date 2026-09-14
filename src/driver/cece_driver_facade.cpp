@@ -204,6 +204,8 @@ CeceDriverOrchestrator::CeceDriverOrchestrator(const std::string& config_file, i
             for (std::size_t si = 0; si < streams.size(); ++si) {
                 conf::Value stream = streams[si];
                 if (stream["source"].string_or("") == "earthaccess") {
+                    CECE_LOG_WARNING("[DRIVER] Skipping earthaccess stream '" + stream["name"].string_or("<unnamed>") +
+                                     "' in the native AMIO driver path. Earthaccess streams must be opened and injected by the Python bridge.");
                     continue;
                 }
                 std::string stream_file = stream["file"].string_or("");
