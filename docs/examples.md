@@ -13,6 +13,7 @@ The `examples/` directory contains several YAML configuration files:
 -   `cece_config_ex5.yaml`: Multi-species (CO and NO) emissions with multi-timestep execution
 -   `cece_config_ex6.yaml`: Handling non-separated inventories
 -   `cece_config_advanced.yaml`: **NEW** - Comprehensive example demonstrating advanced Stacking Engine features
+-   `cece_config_earthaccess.yaml`: Cloud-native NASA Earthdata streaming with `earthaccess`
 
 ### Advanced Example Highlights
 
@@ -41,8 +42,122 @@ For complete technical details about how these features work, see the [Stacking 
 | ex5 | 4×4 | CO, NO | Multi-species, multi-timestep execution |
 | ex6 | (varies) | Multiple | Non-separated inventory handling |
 | **advanced** | **144×91** | **CO, NOx, Isoprene** | **All advanced features demonstrated** |
+| earthaccess | HEMCO 4×5 | Isoprene, soil NO, dust | NASA Earthdata cloud streams via `earthaccess` |
 
 ---
+
+## Installing Cloud Extras for Earthdata Tests
+
+The Earthaccess example reads NASA Earthdata cloud-hosted granules directly instead of staging local NetCDF files. Install CECE's optional `cloud` dependencies before running that workflow.
+
+For tests against this source checkout or development branch, install CECE in editable mode from the repository root:
+
+```bash
+cd /path/to/CECE
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install -e '.[cloud,test]'
+```
+
+The quoted `'.[cloud,test]'` argument installs the local package plus optional dependency groups declared in `pyproject.toml`:
+
+-   `cloud`: `earthaccess`, `xarray`, `h5netcdf`, `fsspec`, `s3fs`, and `dask`
+-   `test`: `pytest`
+
+The quotes are important because many shells treat square brackets as glob characters. Quoting ensures `pip` receives the extras expression unchanged.
+
+If you are installing a published CECE package instead of the local checkout, use:
+
+```bash
+python -m pip install 'cece-tools[cloud]'
+```
+
+For an isolated local test environment, create and activate a virtual environment first:
+
+```bash
+cd /path/to/CECE
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install -e '.[cloud,test]'
+```
+
+Verify that the cloud stack imports in the same Python environment that will run the tests:
+
+```bash
+python - <<'PY'
+import earthaccess
+import xarray
+import h5netcdf
+import fsspec
+import s3fs
+import dask
+
+print("earthaccess:", getattr(earthaccess, "__version__", "installed"))
+print("xarray:", xarray.__version__)
+print("h5netcdf:", h5netcdf.__version__)
+print("fsspec:", fsspec.__version__)
+print("s3fs:", s3fs.__version__)
+print("dask:", dask.__version__)
+PY
+```
+
+### Earthdata Credentials
+
+Live Earthdata tests require NASA Earthdata Login credentials. Create an Earthdata account at <https://urs.earthdata.nasa.gov/> if needed, then make the credentials available to `earthaccess`.
+
+The recommended approach for local testing is `~/.netrc`:
+
+```bash
+cat > ~/.netrc <<'EOF'
+machine urs.earthdata.nasa.gov
+	login YOUR_EARTHDATA_USERNAME
+	password YOUR_EARTHDATA_PASSWORD_OR_TOKEN
+EOF
+
+chmod 600 ~/.netrc
+```
+
+Alternatively, export credentials in the current shell:
+
+```bash
+export EARTHDATA_USERNAME='your-username'
+export EARTHDATA_TOKEN='your-token-or-password'
+```
+
+Do not commit credentials, tokens, `.netrc` files, or shell history snippets containing secrets to the repository.
+
+Smoke-test authentication and a small CMR search before running the full workflow:
+
+```bash
+python - <<'PY'
+import earthaccess
+
+auth = earthaccess.login(strategy="all")
+print("Authenticated:", auth.authenticated)
+
+granules = earthaccess.search_data(
+		short_name="SPL4SMGP",
+		temporal=("2022-07-01", "2022-07-02"),
+		count=1,
+		cloud_hosted=True,
+)
+print("Granules found:", len(granules))
+PY
+```
+
+Run the fast mocked and fixture-backed tests with:
+
+```bash
+pytest tests/test_earthaccess_stream_bdsnp_megan3.py -v
+```
+
+Run the live Earthdata tests with:
+
+```bash
+pytest tests/test_earthaccess_stream_bdsnp_megan3.py -v -m live_earthdata
+```
+
+If the live test fails to authenticate, confirm that `~/.netrc` is mode `600` and that `python -c 'import earthaccess; print(earthaccess.login(strategy="all").authenticated)'` returns `True` in the active environment.
 
 ## Setting Up Examples
 
