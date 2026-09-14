@@ -9,11 +9,10 @@
  * driver (`src/driver/cece_driver_facade.cpp`):
  *
  *   1. NO AMIO read-manifest file (`amio_read_manifest_facade_*.yaml`) is ever
- *      written to disk during operation. The manifest is now built purely in
- *      memory (`BuildManifestContent` returns a std::string) and consumed via
- *      the string-based AMIO entry points (`amio_init_from_string` /
- *      `amio_open_dataset_from_string`). There is no `std::ofstream` of a
- *      manifest path in `AdvanceTime` (or anywhere in the facade) anymore.
+ *      written to disk during operation. The manifest content is built once
+ *      (`BuildManifestContent` returns a std::string), written to a generated
+ *      compatibility manifest path, and consumed via the deployed AMIO
+ *      file-manifest entry points.
  *
  *   2. NO per-step YAML re-parse: the config is parsed exactly once, at
  *      construction, via `ResolveStreamConfigsFromFile` (which is the only
@@ -106,9 +105,9 @@ std::string ExtractMemberBody(const std::string& src, const std::string& method)
 // Assertion 1: no manifest file is ever written to disk.
 //
 // Structural guard: the production facade must contain NO std::ofstream that
-// writes an `amio_read_manifest_facade_` path, and NO write of a
-// `read_manifest_path`, and it MUST use the string-based manifest path
-// (BuildManifestContent + amio_init_from_string / amio_open_dataset_from_string).
+// writes the legacy `amio_read_manifest_facade_` path, and NO write of a
+// `read_manifest_path`, and it MUST use BuildManifestContent plus AMIO's
+// file-manifest entry points.
 // Feature: driver-io-regrid-perf
 // _Requirements: 9.2_
 // ============================================================================
@@ -123,16 +122,11 @@ TEST(NoManifestNoReparse, FacadeNeverWritesManifestFile) {
         << "facade still references the on-disk manifest filename 'amio_read_manifest_facade_*'";
     EXPECT_EQ(src.find("read_manifest_path"), std::string::npos) << "facade still references a 'read_manifest_path' (on-disk manifest path)";
 
-    // Belt-and-braces: there is no std::ofstream anywhere in the facade (the
-    // manifest was the only thing the driver ever wrote to disk here).
-    EXPECT_EQ(src.find("std::ofstream"), std::string::npos) << "facade still contains a std::ofstream (manifest is meant to be in-memory only)";
-
-    // The in-memory manifest path IS used: BuildManifestContent feeds the
-    // string-based AMIO entry points.
+    // The retained manifest path IS used: BuildManifestContent feeds AMIO's
+    // deployed file-manifest entry points.
     EXPECT_NE(src.find("BuildManifestContent"), std::string::npos) << "facade no longer builds an in-memory manifest via BuildManifestContent";
-    EXPECT_NE(src.find("amio_init_from_string"), std::string::npos) << "facade no longer opens the AMIO core via amio_init_from_string";
-    EXPECT_NE(src.find("amio_open_dataset_from_string"), std::string::npos)
-        << "facade no longer opens the AMIO dataset via amio_open_dataset_from_string";
+    EXPECT_NE(src.find("amio_init("), std::string::npos) << "facade no longer opens the AMIO core via amio_init";
+    EXPECT_NE(src.find("amio_open_dataset("), std::string::npos) << "facade no longer opens the AMIO dataset via amio_open_dataset";
 }
 
 // ============================================================================

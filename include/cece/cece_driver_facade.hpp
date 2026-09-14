@@ -71,10 +71,11 @@ struct StreamConfig {
  * @brief Retained AMIO resources for one stream variable, opened at most once.
  */
 struct AmioHandleSet {
-    amio_core_handle core = nullptr;        ///< from amio_init_from_string
-    amio_dataset_handle dataset = nullptr;  ///< from amio_open_dataset_from_string
+    amio_core_handle core = nullptr;        ///< from amio_init
+    amio_dataset_handle dataset = nullptr;  ///< from amio_open_dataset
     std::string active_data_model;          ///< model that actually opened
-    std::string manifest_content;           ///< in-memory manifest (never a file)
+    std::string manifest_content;           ///< manifest YAML content
+    std::string manifest_path;              ///< generated compatibility manifest path
 };
 
 /**
@@ -311,13 +312,13 @@ class CeceDriverOrchestrator {
     // core+dataset handle even when their mapalgo differs (Req 2.1, 2.2, 3.1,
     // 3.2, 7.1, 11.2, 11.7).
     //
-    // On first touch this builds the in-memory manifest via BuildManifestContent
-    // and opens via the STRING-based AMIO entry points (amio_init_from_string /
-    // amio_open_dataset_from_string) — no manifest file is written to disk and
-    // no per-step MPI_Barrier is issued. Only the open is wrapped in the
-    // MPI_COMM_SELF parent-communicator swap; the communicator is restored to
-    // comm_c_ afterward. Candidate data models are tried in order: {cfg.data_model}
-    // when cfg.data_model_explicit, else {"enhanced", "classic"} (Req 2.5, 2.6).
+    // On first touch this builds the manifest via BuildManifestContent, writes
+    // it to a generated compatibility manifest file, and opens via the AMIO
+    // file-manifest entry points available in deployed AMIO versions. Only the
+    // open is wrapped in the MPI_COMM_SELF parent-communicator swap; the
+    // communicator is restored to comm_c_ afterward. Candidate data models are
+    // tried in order: {cfg.data_model} when cfg.data_model_explicit, else
+    // {"enhanced", "classic"} (Req 2.5, 2.6).
     //
     // On success it caches {core, dataset, active_data_model, manifest_content}
     // in amio_handles_ and returns the pointer. On failure of a candidate it

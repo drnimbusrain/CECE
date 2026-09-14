@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <dagr/logging.hpp>
 #include <filesystem>
+#include <functional>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
@@ -260,6 +261,28 @@ fs::path resolve_earthaccess_helper(const std::string& config_file) {
     }
 
     return cwd_helper;
+}
+
+fs::path amio_manifest_path_for_key(const std::string& key, const std::string& data_model) {
+    const fs::path manifest_dir = fs::absolute(fs::path(".cece_amio_manifests"));
+    std::error_code ec;
+    fs::create_directories(manifest_dir, ec);
+    const std::size_t hash = std::hash<std::string>{}(key + "|" + data_model);
+    return manifest_dir / ("amio_manifest_" + std::to_string(hash) + ".yaml");
+}
+
+bool write_manifest_file(const fs::path& path, const std::string& content, std::string& failure_detail) {
+    std::ofstream out(path);
+    if (!out) {
+        failure_detail = "failed to create AMIO manifest file '" + path.string() + "'";
+        return false;
+    }
+    out << content;
+    if (!out) {
+        failure_detail = "failed to write AMIO manifest file '" + path.string() + "'";
+        return false;
+    }
+    return true;
 }
 
 bool config_has_earthaccess_streams(const std::string& config_file) {
@@ -607,9 +630,11 @@ AmioHandleSet* CeceDriverOrchestrator::GetOrOpenHandleSet(const std::string& han
     }
 
     for (const auto& candidate_model : data_models_to_try) {
-        // Build the manifest in memory once per candidate; no file is written
-        // to disk (Req 9.2).
         const std::string manifest_content = BuildManifestContent(cfg, candidate_model);
+        const fs::path manifest_path = amio_manifest_path_for_key(handle_key, candidate_model);
+        if (!write_manifest_file(manifest_path, manifest_content, failure_detail)) {
+            continue;
+        }
 
         amio_core_handle read_core = nullptr;
         amio_dataset_handle read_dataset = nullptr;
@@ -620,14 +645,14 @@ AmioHandleSet* CeceDriverOrchestrator::GetOrOpenHandleSet(const std::string& han
             amio_set_parent_communicator(MPI_Comm_c2f(MPI_COMM_SELF));
         }
 
-        amio_status_t amio_rc = amio_init_from_string(manifest_content.c_str(), "yaml", &read_core);
+        amio_status_t amio_rc = amio_init(manifest_path.string().c_str(), &read_core);
         if (amio_rc != AMIO_OK) {
-            failure_detail = std::string("amio_init_from_string failed for handle '") + handle_key + "': rc=" + std::to_string(amio_rc) + " (" +
+            failure_detail = std::string("amio_init failed for handle '") + handle_key + "': rc=" + std::to_string(amio_rc) + " (" +
                              amio_strerror(amio_rc) + ")";
         } else {
-            amio_rc = amio_open_dataset_from_string(read_core, manifest_content.c_str(), "yaml", AMIO_MODE_READ, &read_dataset);
+            amio_rc = amio_open_dataset(read_core, manifest_path.string().c_str(), AMIO_MODE_READ, &read_dataset);
             if (amio_rc != AMIO_OK) {
-                failure_detail = std::string("amio_open_dataset_from_string failed for '") + cfg.input_file_path +
+                failure_detail = std::string("amio_open_dataset failed for '") + cfg.input_file_path +
                                  "': rc=" + std::to_string(amio_rc) + " (" + amio_strerror(amio_rc) + ")";
             }
         }
@@ -651,6 +676,7 @@ AmioHandleSet* CeceDriverOrchestrator::GetOrOpenHandleSet(const std::string& han
             set.dataset = read_dataset;
             set.active_data_model = candidate_model;
             set.manifest_content = manifest_content;
+            set.manifest_path = manifest_path.string();
             auto inserted = amio_handles_.emplace(handle_key, std::move(set));
             return &inserted.first->second;
         }
@@ -668,6 +694,8 @@ AmioHandleSet* CeceDriverOrchestrator::GetOrOpenHandleSet(const std::string& han
             amio_finalize(read_core);
             read_core = nullptr;
         }
+        std::error_code remove_ec;
+        fs::remove(manifest_path, remove_ec);
     }
 
     // All candidates failed: leave failure_detail set, cache nothing.
@@ -801,10 +829,17 @@ bool CeceDriverOrchestrator::TeardownHandles() {
             }
             set.core = nullptr;
         }
+        if (!set.manifest_path.empty()) {
+            std::error_code ec;
+            fs::remove(set.manifest_path, ec);
+            if (ec) {
+                all_ok = false;
+                CECE_LOG_ERROR("[DRIVER] Failed to remove AMIO manifest file '" + set.manifest_path + "': " + ec.message());
+            }
+        }
     }
 
-    // No manifest files to delete: manifests are in-memory strings, never
-    // written to disk (Req 7.3). Drop the loop-invariant caches (Req 7.5).
+    // Drop the loop-invariant caches (Req 7.5).
     amio_handles_.clear();
     stream_configs_.clear();
     slice_caches_.clear();

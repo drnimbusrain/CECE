@@ -8,11 +8,16 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
+#include <functional>
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <stdexcept>
 
 #include "cece/cece_logger.hpp"
+
+namespace fs = std::filesystem;
 
 namespace cece::io {
 
@@ -85,16 +90,28 @@ static axis::topology::UnstructuredMesh<Kokkos::HostSpace> load_mesh_from_file(i
     amio_view_handle edges_on_cell_view = nullptr;
     amio_view_handle vertices_on_cell_view = nullptr;
 
-    amio_status_t amio_rc = amio_init_from_string(manifest_content.c_str(), "yaml", &core);
-    if (amio_rc != AMIO_OK) {
-        throw std::runtime_error("amio_init_from_string failed");
+    const fs::path manifest_path = fs::absolute(fs::path("amio_gridspec_manifest_" + std::to_string(std::hash<std::string>{}(gridspec_file)) + ".yaml"));
+    {
+        std::ofstream manifest_file(manifest_path);
+        if (!manifest_file) {
+            throw std::runtime_error("Failed to create gridspec AMIO manifest: " + manifest_path.string());
+        }
+        manifest_file << manifest_content;
     }
 
-    amio_rc = amio_open_dataset_from_string(core, manifest_content.c_str(), "yaml", AMIO_MODE_READ, &dataset);
+    amio_status_t amio_rc = amio_init(manifest_path.string().c_str(), &core);
+    if (amio_rc != AMIO_OK) {
+        fs::remove(manifest_path);
+        throw std::runtime_error("amio_init failed");
+    }
+
+    amio_rc = amio_open_dataset(core, manifest_path.string().c_str(), AMIO_MODE_READ, &dataset);
     if (amio_rc != AMIO_OK) {
         amio_finalize(core);
-        throw std::runtime_error("amio_open_dataset_from_string failed");
+        fs::remove(manifest_path);
+        throw std::runtime_error("amio_open_dataset failed");
     }
+    fs::remove(manifest_path);
 
     // A. Try SCRIP-conventions coordinates first
     amio_view_handle scrip_lon_peek = nullptr;
