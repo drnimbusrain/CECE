@@ -6,7 +6,6 @@
 
 #include <cstddef>
 #include <dagr/dagr.hpp>
-#include <halo/collectives.hpp>
 #include <halo/communicator.hpp>
 #include <halo/environment.hpp>
 #include <memory>
@@ -272,7 +271,7 @@ class CeceDriverOrchestrator {
     // Pure fused front-half gate DECISION helper (Req 6.1, 6.3, 6.4, 8.3).
     //
     // Given the two elementwise-reduced vectors produced by the fused
-    // halo::allreduce pair over the packed 5-entry vector
+    // collective MIN/MAX pair over the packed 5-entry vector
     // [readiness, file_nx, file_ny, field_nlev, plan.identity]:
     //   mn[k] = MIN over ranks of entry k,
     //   mx[k] = MAX over ranks of entry k,

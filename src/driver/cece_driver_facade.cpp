@@ -155,18 +155,18 @@ RecordBracket cadence_record_bracket(const std::string& cadence, const std::stri
     return br;
 }
 
-// Reimplemented on halo::allreduce<int> (Decision C): the size>1 branch reduces
-// the single-element 0/1 readiness flag with MPI_MIN through the orchestrator's
-// long-lived halo_comm_ wrapper (passed in as halo_comm) rather than a
-// hand-rolled MPI_Allreduce. The signature adds the halo::Communicator* so this
-// free function can reach the wrapper the orchestrator already owns; every call
-// site passes `halo_comm_ ? &*halo_comm_ : nullptr`. The short-circuits
-// (uninitialized MPI / MPI_COMM_NULL / mpi_size <= 1 return the local readiness
-// value with the same context-based failure_detail discipline) and the
-// not-ready message are preserved verbatim. HALO's throwing error policy
-// replaces the former rc != MPI_SUCCESS branch; the try/catch maps any throw to
-// a failure_detail and returns false (Req 4.1-4.4).
+std::vector<int> mpi_allreduce_vector(MPI_Comm comm, const std::vector<int>& values, MPI_Op op) {
+    std::vector<int> reduced(values.size(), 0);
+    if (values.empty()) return reduced;
+    const int rc = MPI_Allreduce(values.data(), reduced.data(), static_cast<int>(values.size()), MPI_INT, op, comm);
+    if (rc != MPI_SUCCESS) {
+        throw std::runtime_error("MPI_Allreduce failed with rc=" + std::to_string(rc));
+    }
+    return reduced;
+}
+
 bool collective_all_ready(halo::Communicator* halo_comm, MPI_Comm comm, bool local_ready, const std::string& context, std::string& failure_detail) {
+    (void)halo_comm;
     // Single distributed predicate (cece_mpi_env.hpp): uninitialized MPI /
     // MPI_COMM_NULL / size <= 1 all take the serial path.
     if (!comm_is_distributed(comm)) {
@@ -174,9 +174,8 @@ bool collective_all_ready(halo::Communicator* halo_comm, MPI_Comm comm, bool loc
         return local_ready;
     }
 
-    // size > 1: reduce the 0/1 readiness flag with MPI_MIN via halo::allreduce.
     try {
-        const std::vector<int> out = halo::allreduce<int>(*halo_comm, std::vector<int>{local_ready ? 1 : 0}, MPI_MIN);
+        const std::vector<int> out = mpi_allreduce_vector(comm, std::vector<int>{local_ready ? 1 : 0}, MPI_MIN);
         if (out[0] != 1) {
             if (failure_detail.empty()) failure_detail = context + " failed on one or more ranks";
             return false;
@@ -188,27 +187,15 @@ bool collective_all_ready(halo::Communicator* halo_comm, MPI_Comm comm, bool loc
     }
 }
 
-// Reimplemented on halo::allreduce<int> (Req 5). Reduces the single-element
-// local_value with MPI_MIN and then MPI_MAX through the orchestrator's
-// long-lived halo_comm_ wrapper (passed in as halo_comm) rather than two
-// hand-rolled MPI_Allreduce calls. The signature adds the halo::Communicator*
-// so this free function can reach the wrapper the orchestrator already owns;
-// every call site passes `halo_comm_ ? &*halo_comm_ : nullptr`. The
-// short-circuits (uninitialized MPI / MPI_COMM_NULL / mpi_size <= 1 return true
-// without any collective) and the mismatch message are preserved verbatim. The
-// two-reduce (MIN then MAX) op sequence is kept. HALO's throwing error policy
-// replaces the former rc != MPI_SUCCESS branch; the try/catch maps any throw to
-// a failure_detail and returns false (Req 5.1-5.4).
 bool collective_int_matches(halo::Communicator* halo_comm, MPI_Comm comm, int local_value, const std::string& name, std::string& failure_detail) {
+    (void)halo_comm;
     // Single distributed predicate (cece_mpi_env.hpp): with one participant
     // min == max == local, so the serial path trivially matches.
     if (!comm_is_distributed(comm)) return true;
 
-    // size > 1: reduce local_value with MPI_MIN then MPI_MAX via halo::allreduce,
-    // preserving the two-reduce op sequence; flag a mismatch when min != max.
     try {
-        const std::vector<int> mins = halo::allreduce<int>(*halo_comm, std::vector<int>{local_value}, MPI_MIN);
-        const std::vector<int> maxs = halo::allreduce<int>(*halo_comm, std::vector<int>{local_value}, MPI_MAX);
+        const std::vector<int> mins = mpi_allreduce_vector(comm, std::vector<int>{local_value}, MPI_MIN);
+        const std::vector<int> maxs = mpi_allreduce_vector(comm, std::vector<int>{local_value}, MPI_MAX);
         const int minimum = mins[0];
         const int maximum = maxs[0];
         if (minimum != maximum) {
@@ -924,8 +911,8 @@ bool CeceDriverOrchestrator::RegridToBandBuffer(const std::string& var_name, con
         // rank skips a collective a peer enters (Req 6.2, 8.3, 8.4). Any HALO
         // throw maps to failure_detail and returns false.
         try {
-            const std::vector<int> mn = halo::allreduce<int>(*halo_comm_, gate_vec, MPI_MIN);
-            const std::vector<int> mx = halo::allreduce<int>(*halo_comm_, gate_vec, MPI_MAX);
+            const std::vector<int> mn = mpi_allreduce_vector(comm_c_, gate_vec, MPI_MIN);
+            const std::vector<int> mx = mpi_allreduce_vector(comm_c_, gate_vec, MPI_MAX);
             if (!FusedGateDecision(mn, mx, failure_detail)) return false;
         } catch (const std::exception& e) {
             failure_detail = "front-half readiness gate failed: " + std::string(e.what());
@@ -1002,7 +989,7 @@ bool CeceDriverOrchestrator::RegridToBandBuffer(const std::string& var_name, con
             return false;
         }
         const std::vector<int> ready_vec{local_ok ? 1 : 0};
-        const std::vector<int> reduced = halo::allreduce<int>(*halo_comm_, ready_vec, MPI_MIN);
+        const std::vector<int> reduced = mpi_allreduce_vector(comm_c_, ready_vec, MPI_MIN);
         if (reduced.empty() || reduced[0] != 1) {
             if (failure_detail.empty()) {
                 failure_detail = "rank-local regrid failed or produced an unexpected destination-band size";

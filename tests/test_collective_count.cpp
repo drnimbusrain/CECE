@@ -64,7 +64,6 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdlib>
-#include <halo/collectives.hpp>
 #include <halo/communicator.hpp>
 #include <halo/environment.hpp>
 #include <string>
@@ -213,7 +212,10 @@ AssemblyCounts RunAssembly(const halo::Communicator& comm, int size, int rank, i
         // Pre-gather local_ok readiness reduce (the driver's single MIN over
         // local_ok so a failing rank still enters the collective). ONE
         // Allreduce, independent of field_nlev.
-        (void)halo::allreduce<int>(comm, std::vector<int>{1}, MPI_MIN);
+        int local_ready = 1;
+        int reduced_ready = 0;
+        MPI_Allreduce(&local_ready, &reduced_ready, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
+        (void)reduced_ready;
 
         // Per-level assembly: EXACTLY field_nlev MPI_Allgatherv calls (plain
         // MPI_DOUBLE), each moving this rank's contiguous band into
@@ -245,11 +247,13 @@ AssemblyCounts RunAssembly(const halo::Communicator& comm, int size, int rank, i
 // [readiness, file_nx, file_ny, field_nlev, identity] vector. Returns the spy's
 // Allreduce count for the gate window (must be exactly 2 when distributed).
 long RunFrontGate(const halo::Communicator& comm, int size, int field_nlev) {
+    (void)comm;
     ResetSpy();
     if (size > 1) {
         const std::vector<int> v{1, kNx, kNy, field_nlev, 1};
-        (void)halo::allreduce<int>(comm, v, MPI_MIN);
-        (void)halo::allreduce<int>(comm, v, MPI_MAX);
+        std::vector<int> reduced(v.size(), 0);
+        MPI_Allreduce(v.data(), reduced.data(), static_cast<int>(v.size()), MPI_INT, MPI_MIN, MPI_COMM_WORLD);
+        MPI_Allreduce(v.data(), reduced.data(), static_cast<int>(v.size()), MPI_INT, MPI_MAX, MPI_COMM_WORLD);
     }
     return AllreduceCount();
 }

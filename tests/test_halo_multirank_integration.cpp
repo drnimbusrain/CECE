@@ -57,7 +57,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <halo/collectives.hpp>
 #include <halo/communicator.hpp>
 #include <halo/environment.hpp>
 #include <optional>
@@ -148,8 +147,11 @@ void BcastDoubles(std::vector<double>& buf) {
 // the local flag directly.
 bool ReadinessAllreduce(bool local_ok, const std::optional<halo::Communicator>& halo_comm) {
     if (!halo_comm.has_value()) return local_ok;
-    const std::vector<int> reduced = halo::allreduce<int>(*halo_comm, {local_ok ? 1 : 0}, MPI_MIN);
-    return reduced.at(0) == 1;
+    (void)halo_comm;
+    int local = local_ok ? 1 : 0;
+    int reduced = 0;
+    MPI_Allreduce(&local, &reduced, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
+    return reduced == 1;
 }
 
 // The fused front-half gate the driver runs: pack [readiness, file_nx, file_ny,
@@ -164,12 +166,14 @@ bool FusedFrontGate(const std::array<int, 5>& local, const std::optional<halo::C
     std::array<int, 5> mn = local;
     std::array<int, 5> mx = local;
     if (halo_comm.has_value()) {
-        const std::vector<int> packed(local.begin(), local.end());
-        const std::vector<int> rmin = halo::allreduce<int>(*halo_comm, packed, MPI_MIN);
-        const std::vector<int> rmax = halo::allreduce<int>(*halo_comm, packed, MPI_MAX);
+        (void)halo_comm;
+        std::array<int, 5> rmin{};
+        std::array<int, 5> rmax{};
+        MPI_Allreduce(local.data(), rmin.data(), static_cast<int>(local.size()), MPI_INT, MPI_MIN, MPI_COMM_WORLD);
+        MPI_Allreduce(local.data(), rmax.data(), static_cast<int>(local.size()), MPI_INT, MPI_MAX, MPI_COMM_WORLD);
         for (std::size_t k = 0; k < 5; ++k) {
-            mn[k] = rmin.at(k);
-            mx[k] = rmax.at(k);
+            mn[k] = rmin[k];
+            mx[k] = rmax[k];
         }
     }
     if (mn[0] != 1) return false;  // readiness (any rank not-ready => reject)

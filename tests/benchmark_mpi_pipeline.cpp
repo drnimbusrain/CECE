@@ -46,7 +46,6 @@
 #include <cstddef>
 #include <cstdlib>
 #include <cstring>
-#include <halo/collectives.hpp>
 #include <halo/communicator.hpp>
 #include <halo/environment.hpp>
 #include <halo/gather_replicated.hpp>
