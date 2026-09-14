@@ -142,6 +142,9 @@ CeceConfig ParseConfig(const std::string& filename) {
         conf::Value streams = data["streams"];
         for (std::size_t i = 0; i < streams.size(); ++i) {
             conf::Value node = streams[i];
+            if (string_or(node, "source") == "earthaccess") {
+                continue;
+            }
             CeceDataStreamConfig stream;
             stream.name = string_or(node, "name");
             conf::Value files = node["file"];
@@ -231,6 +234,20 @@ CeceConfig ParseConfig(const std::string& filename) {
                 throw std::invalid_argument("driver.amio_staging_buffer_count must be >= 1; got " + std::to_string(count) + ".");
             }
             config.driver_config.amio_staging_buffer_count = count;
+        }
+        if (driver["amio_staging_buffer_capacity_bytes"]) {
+            int cap = driver["amio_staging_buffer_capacity_bytes"].as_int();
+            if (cap < 1) {
+                throw std::invalid_argument("driver.amio_staging_buffer_capacity_bytes must be >= 1; got " + std::to_string(cap) + ".");
+            }
+            config.driver_config.amio_staging_buffer_capacity_bytes = cap;
+        }
+        if (driver["amio_prefetch_depth"]) {
+            int depth = driver["amio_prefetch_depth"].as_int();
+            if (depth < 1) {
+                throw std::invalid_argument("driver.amio_prefetch_depth must be >= 1; got " + std::to_string(depth) + ".");
+            }
+            config.driver_config.amio_prefetch_depth = depth;
         }
     }
     config.output_config.fields.SetTimeUnits(config.driver_config.start_time);

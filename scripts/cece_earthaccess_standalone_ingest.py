@@ -11,11 +11,10 @@ that the C++ driver injects into the CECE import state.
 from __future__ import annotations
 
 import argparse
-import math
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable, List, Optional, Tuple
 
 import numpy as np
 import yaml
@@ -25,14 +24,14 @@ def _load_coords(path: Path) -> np.ndarray:
     return np.asarray([float(line.strip()) for line in path.read_text().splitlines() if line.strip()], dtype=np.float64)
 
 
-def _bounding_box_from_grid(grid: dict) -> Optional[tuple[float, float, float, float]]:
+def _bounding_box_from_grid(grid: dict) -> Optional[Tuple[float, float, float, float]]:
     required = ("lon_min", "lon_max", "lat_min", "lat_max")
     if not all(key in grid for key in required):
         return None
     return (float(grid["lon_min"]), float(grid["lat_min"]), float(grid["lon_max"]), float(grid["lat_max"]))
 
 
-def _earthaccess_streams(config: dict) -> list[dict]:
+def _earthaccess_streams(config: dict) -> List[dict]:
     grid = config.get("driver", {}).get("grid", {}) or {}
     streams = []
     for stream in config.get("cece_data", {}).get("streams", []) or []:
@@ -45,7 +44,7 @@ def _earthaccess_streams(config: dict) -> list[dict]:
     return streams
 
 
-def _mapping_target_and_transform(mapping: Any) -> tuple[str, Optional[str]]:
+def _mapping_target_and_transform(mapping: Any) -> Tuple[str, Optional[str]]:
     if isinstance(mapping, str):
         return mapping, None
     if isinstance(mapping, dict):
