@@ -10,10 +10,9 @@
 //              post-gather status sync). Rebuilds the counts/displs each call.
 //              => field_nlev gathers + 2*field_nlev reductions per assembly.
 //
-//   OPTIMIZE : the current adoption — one cached halo::Replicated_Gather_Plan
-//              driving a SINGLE halo::gather_replicated (one MPI_Allgatherv with
-//              a derived strided datatype), and the fused front-half gate (one
-//              packed MIN + one MAX). Plan is built once and reused.
+//   OPTIMIZE : the current adoption — one plain MPI_Allgatherv into contiguous
+//              rank blocks followed by a local reorder, and the fused
+//              front-half gate (one packed MIN + one MAX).
 //              => 1 gather + a fixed, level-independent reduction count.
 //
 // Both variants produce the SAME replicated [level][j][i] field; the harness
@@ -46,10 +45,7 @@
 #include <cstddef>
 #include <cstdlib>
 #include <cstring>
-#include <halo/communicator.hpp>
 #include <halo/environment.hpp>
-#include <halo/gather_replicated.hpp>
-#include <halo/replicated_gather_plan.hpp>
 #include <iomanip>
 #include <iostream>
 #include <optional>
@@ -101,13 +97,6 @@ RegridPlan MakeIdentityPlan(int nx, int ny, int j0, int j1) {
     plan.identity = true;
     plan.built = true;
     return plan;
-}
-
-std::optional<halo::Communicator> MakeHaloComm() {
-    int inited = 0;
-    MPI_Initialized(&inited);
-    if (!inited || WorldSize() <= 1) return std::nullopt;
-    return std::optional<halo::Communicator>(std::in_place, MPI_COMM_WORLD);
 }
 
 int arg_int(int argc, char** argv, const char* flag, int fallback) {
@@ -177,19 +166,13 @@ std::vector<double> AssembleDevelop(const std::vector<double>& send_buf, int nx,
     return full;
 }
 
-// ── OPTIMIZE assembly: one cached Replicated_Gather_Plan + one
-//    gather_replicated. Plan is passed in (built once, reused). ──
+// ── OPTIMIZE assembly: one cached plain-MPI gather + local reorder. ──
+std::vector<double> AssembleOptimize2(const std::vector<double>& send_buf, int nx, int ny, int nlev, int size, int rank,
+                                      const std::vector<int>& band_rows_per_rank);
+
 std::vector<double> AssembleOptimize(const std::vector<double>& send_buf, int nx, int ny, int nlev, int size, int rank,
-                                     const halo::Replicated_Gather_Plan<double>* plan) {
-    std::vector<double> full(static_cast<std::size_t>(nlev) * nx * ny, 0.0);
-    if (size <= 1) {
-        std::copy(send_buf.begin(), send_buf.end(), full.begin());
-        return full;
-    }
-    Kokkos::View<const double*, Kokkos::HostSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>> send_view(send_buf.data(), send_buf.size());
-    Kokkos::View<double*, Kokkos::HostSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>> dest_view(full.data(), full.size());
-    halo::gather_replicated(*plan, send_view, dest_view);
-    return full;
+                                     const std::vector<int>& band_rows_per_rank) {
+    return AssembleOptimize2(send_buf, nx, ny, nlev, size, rank, band_rows_per_rank);
 }
 
 // ── OPTIMIZE2 assembly (candidate fix): ONE MPI_Allgatherv with PLAIN
@@ -358,17 +341,10 @@ int main(int argc, char** argv) {
             band_rows_per_rank[r] = BandStart(r + 1, ny, size) - BandStart(r, ny, size);
         }
 
-        // Build the OPTIMIZE plan ONCE (reused every assembly, as production does).
-        const std::optional<halo::Communicator> halo_comm = MakeHaloComm();
-        std::optional<halo::Replicated_Gather_Plan<double>> plan;
-        if (size > 1) {
-            plan.emplace(*halo_comm, /*local_band_count=*/band_elems, /*num_levels=*/nlev);
-        }
-
         // Correctness: both variants must produce the same field.
         {
             const std::vector<double> a = AssembleDevelop(send_buf, nx, ny, nlev, size, rank);
-            const std::vector<double> b = AssembleOptimize(send_buf, nx, ny, nlev, size, rank, plan.has_value() ? &plan.value() : nullptr);
+            const std::vector<double> b = AssembleOptimize(send_buf, nx, ny, nlev, size, rank, band_rows_per_rank);
             double maxdiff = 0.0;
             for (std::size_t k = 0; k < a.size(); ++k) maxdiff = std::max(maxdiff, std::abs(a[k] - b[k]));
             const std::vector<double> c = AssembleOptimize2(send_buf, nx, ny, nlev, size, rank, band_rows_per_rank);
@@ -406,7 +382,7 @@ int main(int argc, char** argv) {
             const double dev_coll_ms = pmpi_allgatherv_total_ms();
 
             pmpi_allgatherv_reset();
-            (void)AssembleOptimize(send_buf, nx, ny, nlev, size, rank, plan.has_value() ? &plan.value() : nullptr);
+            (void)AssembleOptimize(send_buf, nx, ny, nlev, size, rank, band_rows_per_rank);
             const unsigned long long opt_calls = pmpi_allgatherv_calls();
             const double opt_coll_ms = pmpi_allgatherv_total_ms();
 
@@ -427,7 +403,7 @@ int main(int argc, char** argv) {
         // Warm-up (untimed).
         for (int v = 0; v < 2; ++v) {
             (void)AssembleDevelop(send_buf, nx, ny, nlev, size, rank);
-            (void)AssembleOptimize(send_buf, nx, ny, nlev, size, rank, plan.has_value() ? &plan.value() : nullptr);
+            (void)AssembleOptimize(send_buf, nx, ny, nlev, size, rank, band_rows_per_rank);
             (void)AssembleOptimize2(send_buf, nx, ny, nlev, size, rank, band_rows_per_rank);
             (void)AssembleOptimize3(send_buf, nx, ny, nlev, size, rank, band_rows_per_rank);
         }
@@ -444,7 +420,7 @@ int main(int argc, char** argv) {
                     if (which == Variant::Develop) {
                         sink = AssembleDevelop(send_buf, nx, ny, nlev, size, rank)[0];
                     } else if (which == Variant::Optimize) {
-                        sink = AssembleOptimize(send_buf, nx, ny, nlev, size, rank, plan.has_value() ? &plan.value() : nullptr)[0];
+                        sink = AssembleOptimize(send_buf, nx, ny, nlev, size, rank, band_rows_per_rank)[0];
                     } else if (which == Variant::Optimize2) {
                         sink = AssembleOptimize2(send_buf, nx, ny, nlev, size, rank, band_rows_per_rank)[0];
                     } else {
@@ -484,8 +460,6 @@ int main(int argc, char** argv) {
                       << std::flush;
         }
 
-        // Free the plan before finalize (RAII frees the derived datatype).
-        plan.reset();
     }
 
     if (Kokkos::is_initialized()) Kokkos::finalize();

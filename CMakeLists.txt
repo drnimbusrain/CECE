@@ -554,7 +554,8 @@ target_link_libraries(benchmark_pipeline_develop_vs_optimize PRIVATE cece)
 # MPI-main pattern (own main() with MPI + Kokkos init; does NOT link
 # GTest::gtest_main). Runnable single-process AND under mpirun --oversubscribe
 # -np {1,2,4}. Reports actual MPI wall-time per assembly for the per-level
-# MPI_Allgatherv (develop) vs the single cached gather_replicated (optimize).
+# MPI_Allgatherv (develop) vs the single plain-MPI gather plus local reorder
+# (optimize).
 add_executable(
   benchmark_mpi_pipeline
   tests/benchmark_mpi_pipeline.cpp
