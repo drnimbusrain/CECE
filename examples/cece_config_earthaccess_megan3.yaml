@@ -1,0 +1,162 @@
+# =====================================================================
+# CECE earthaccess Example: Cloud-Native NASA Earthdata Streaming
+# =====================================================================
+# Demonstrates sourcing CECE input data directly from NASA Earthdata
+# Cloud via earthaccess, bypassing local file staging entirely.
+#
+# Required setup (one-time):
+#   export EARTHDATA_USERNAME=<your-EDL-username>
+#   export EARTHDATA_TOKEN=<your-EDL-token>
+#   # Or: store credentials in ~/.netrc (see earthaccess docs)
+#
+# Install cloud extras before running:
+#   pip install 'cece-tools[cloud]'
+#
+# Physics schemes demonstrated:
+#   - megan3  : biogenic VOC emissions (needs LAI, PAR, soil moisture)
+#   - bdsnp   : soil NO emissions (needs soil temperature + moisture)
+#   - fengsha : wind-blown dust (needs soil properties, friction velocity)
+#
+# All input streams use source: earthaccess — no local NetCDF files needed.
+# =====================================================================
+
+driver:
+  start_time: "2022-07-01T00:00:00"
+  end_time: "2022-07-03T23:00:00"
+  timestep_seconds: 3600
+  log_file: "./logs/cece_earthaccess_megan3.log"
+  amio_worker_threads: 1
+  amio_staging_buffer_count: 8
+  grid:
+    nx: 72
+    ny: 46
+    nz: 1
+    lon_min: -180.0
+    lon_max: 180.0
+    lat_min: -90.0
+    lat_max: 90.0
+
+physics_schemes:
+  - name: megan3
+    options:
+      mechanism_file: /scratch3/NAGAPE/gpu-arl-gpu/Patrick.C.Campbell/CECE_dev/data/speciation/spc_cb6.yaml
+      speciation_file: /scratch3/NAGAPE/gpu-arl-gpu/Patrick.C.Campbell/CECE_dev/data/speciation/map_cb6.yaml
+      speciation_dataset: MEGAN
+      co2_concentration: 415.0
+      co2_method: possell # "possell" or "wilkinson"
+      enable_wind_stress: false
+      enable_temp_stress: false
+      enable_aq_stress: false
+      emission_classes:
+        ISOP:
+          ldf: 0.9996
+          ct1: 95.0
+          cleo: 2.0
+          beta: 0.13
+          anew: 0.05
+          agro: 0.6
+          amat: 1.0
+          aold: 0.9
+          default_aef: 1.0e-9
+        
+cece_data:
+  streams:
+    # ------------------------------------------------------------------
+    # Leaf Area Index — MODIS MCD15A2H (LP DAAC, 500 m, 8-day)
+    # Provides: leaf_area_index, leaf_area_index_prev (from prior cycle)
+    # ------------------------------------------------------------------
+    - name: modis_lai
+      source: earthaccess
+      short_name: MCD15A2H
+      version: "061"
+      daac: LPDAAC_ECS
+      cloud_hosted: true
+      temporal_start: "2022-06-25" # overlap for prev-LAI interpolation
+      temporal_end: "2022-07-04"
+      variables:
+        Lai_500m: leaf_area_index
+
+    # ------------------------------------------------------------------
+    # Previous Leaf Area Index — same MODIS collection, prior 8-day cycle
+    # Provides: leaf_area_index_prev (MEGAN3 leaf-age response)
+    # ------------------------------------------------------------------
+    - name: modis_lai_previous
+      source: earthaccess
+      short_name: MCD15A2H
+      version: "061"
+      daac: LPDAAC_ECS
+      cloud_hosted: true
+      temporal_start: "2022-06-17"
+      temporal_end: "2022-06-30"
+      variables:
+        Lai_500m: leaf_area_index_prev
+
+    # ------------------------------------------------------------------
+    # 2-meter air temperature — MERRA-2 single-level diagnostics (GES DISC)
+    # Provides: temperature (MEGAN3 air temperature, K)
+    # ------------------------------------------------------------------
+    - name: merra2_temperature_2m
+      source: earthaccess
+      short_name: M2T1NXSLV
+      daac: GES_DISC
+      cloud_hosted: true
+      temporal_start: "2022-07-01"
+      temporal_end: "2022-07-04"
+      variables:
+        T2M: temperature
+
+    # ------------------------------------------------------------------
+    # Root-zone and surface soil moisture — SMAP L4 (NSIDC, 3-hourly)
+    # Provides: soil_moisture_root, soil_moisture (surface)
+    # ------------------------------------------------------------------
+    - name: smap_soil
+      source: earthaccess
+      short_name: SPL4SMGP
+      daac: NSIDC_CPRD
+      cloud_hosted: true
+      temporal_start: "2022-07-01"
+      temporal_end: "2022-07-04"
+      variables:
+        sm_rootzone: soil_moisture_root
+
+    # ------------------------------------------------------------------
+    # Photosynthetically active radiation — CERES SYN1deg (GES DISC)
+    # Provides: par_direct, par_diffuse, solar_cosine (MEGAN3 inputs)
+    # ------------------------------------------------------------------
+    - name: ceres_par
+      source: earthaccess
+      short_name: CER_SYN1deg-Day_Terra-Aqua-MODIS_Edition4A
+      daac: LARC_ASDC
+      cloud_hosted: true
+      temporal_start: "2022-07-01"
+      temporal_end: "2022-07-04"
+      variables:
+        sfc_sw_down_dir_all_1h: par_direct
+        sfc_sw_down_dif_all_1h: par_diffuse
+        solar_zenith_angle: solar_cosine
+
+    # ------------------------------------------------------------------
+    # Surface wind speed — MERRA-2 surface flux diagnostics (GES DISC)
+    # Provides: wind_speed (optional MEGAN3 wind stress; also used by dust-like schemes)
+    # ------------------------------------------------------------------
+    - name: merra2_surface_wind
+      source: earthaccess
+      short_name: M2T1NXFLX
+      daac: GES_DISC
+      cloud_hosted: true
+      temporal_start: "2022-07-01"
+      temporal_end: "2022-07-04"
+      variables:
+        SPEED: wind_speed
+
+output:
+  enabled: true
+  directory: "./output/earthaccess_megan3"
+  filename_pattern: "cece_earthaccess_{YYYY}{MM}{DD}_{HH}{mm}{ss}.nc"          
+  fields:
+    - name: MEGAN_ISOP
+      attributes:
+        units: "kg m-2 s-1"
+        long_name: "CECE simplified MEGAN3 ISOP emission flux"
+  global_attributes:
+    title: "CECE EarthAccess standalone test"
