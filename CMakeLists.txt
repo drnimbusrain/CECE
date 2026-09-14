@@ -541,9 +541,9 @@ add_executable(benchmark_regrid_apply tests/benchmark_regrid_apply.cpp)
 target_link_libraries(benchmark_regrid_apply PRIVATE cece)
 
 # Standalone develop-vs-optimize per-step pipeline benchmark (regrid+assemble+ingest).
-# Its DEVELOP path constructs a KokkosSparse::CrsMatrix directly; KokkosKernels is
-# now a hard AXIS dependency (found or fetched), so this always builds and the
-# KokkosSparse headers are always on the include path via the cece->axis link.
+# Its DEVELOP path reproduces the previous per-call CSR allocations and
+# multiplication without requiring optional KokkosSparse headers, so this target
+# remains buildable with the deployed CECE/AXIS dependency set.
 add_executable(
   benchmark_pipeline_develop_vs_optimize
   tests/benchmark_pipeline_develop_vs_optimize.cpp
