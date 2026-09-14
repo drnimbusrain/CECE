@@ -203,6 +203,9 @@ CeceDriverOrchestrator::CeceDriverOrchestrator(const std::string& config_file, i
             conf::Value streams = cfg.at("cece_data.streams");
             for (std::size_t si = 0; si < streams.size(); ++si) {
                 conf::Value stream = streams[si];
+                if (stream["source"].string_or("") == "earthaccess") {
+                    continue;
+                }
                 std::string stream_file = stream["file"].string_or("");
                 std::string stream_mapalgo = stream["mapalgo"].string_or("consd");
                 std::string stream_cadence = stream["cadence"].string_or("");
