@@ -38,7 +38,10 @@ class EarthAccessStreamConfig:
     temporal_end : str
         ISO-8601 end date, e.g. ``"2022-07-03"``.
     variable_map : dict
-        Mapping of NASA variable name -> CECE import state field name.
+        Mapping of NASA variable name -> CECE import state field name, or to a
+        mapping with ``model`` and optional ``transform`` keys. Supported
+        transforms include ``cos_degrees`` and ``cos_radians`` for solar zenith
+        angle inputs that must become CECE ``solar_cosine`` fields.
     bounding_box : tuple or None
         ``(west, south, east, north)`` in decimal degrees, or ``None`` for global.
     version : str or None

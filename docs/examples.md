@@ -157,6 +157,17 @@ Run the live Earthdata tests with:
 pytest tests/test_earthaccess_stream_bdsnp_megan3.py -v -m live_earthdata
 ```
 
+Earthaccess variable mappings can also apply simple transforms before fields are injected into CECE. For example, MEGAN3 expects `solar_cosine` in the range `[0, 1]`, while some NASA products expose solar zenith angle in degrees. Use `transform: cos_degrees` to convert degrees to daylight cosine during injection:
+
+```yaml
+variables:
+  solar_zenith_angle:
+    model: solar_cosine
+    transform: cos_degrees
+```
+
+Use `transform: cos_radians` for radian inputs. If `solar_cosine` is mapped without a transform, the bridge validates that the incoming values are already in `[0, 1]`.
+
 If the live test fails to authenticate, confirm that `~/.netrc` is mode `600` and that `python -c 'import earthaccess; print(earthaccess.login(strategy="all").authenticated)'` returns `True` in the active environment.
 
 ## Setting Up Examples

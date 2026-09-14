@@ -381,6 +381,28 @@ class TestParseEarthAccessStreams:
         assert len(result) == 1
         assert result[0].short_name == "MCD15A2H"
 
+    def test_structured_variable_mapping_preserved(self):
+        raw = self._make_raw_cfg(
+            {
+                "name": "ceres_par",
+                "source": "earthaccess",
+                "short_name": "CER_SYN1deg-Day_Terra-Aqua-MODIS_Edition4A",
+                "temporal_start": "2022-07-01",
+                "temporal_end": "2022-07-03",
+                "variables": {
+                    "solar_zenith_angle": {
+                        "model": "solar_cosine",
+                        "transform": "cos_degrees",
+                    }
+                },
+            }
+        )
+        result = parse_earthaccess_streams(raw)
+        assert result[0].variable_map["solar_zenith_angle"] == {
+            "model": "solar_cosine",
+            "transform": "cos_degrees",
+        }
+
 
 # =============================================================================
 # 3. CeceConfig routing of source:earthaccess vs AMIO streams
@@ -644,6 +666,52 @@ class TestEarthAccessStreamBridgeMocked:
 
         assert "soil_moisture_root" in state.get_field_names()
         assert "leaf_area_index" in state.get_field_names()
+
+    def test_cos_degrees_transform_for_solar_zenith_angle(self):
+        shape = (len(TIME_COORD), NY, NX)
+        sza = np.full(shape, 60.0, dtype=np.float64)
+        ds = xr.Dataset(
+            {"solar_zenith_angle": (["time", "lat", "lon"], sza)},
+            coords={"time": TIME_COORD, "lat": LAT, "lon": LON},
+        )
+        cfg = EarthAccessStreamConfig(
+            name="ceres_par",
+            short_name="CER_SYN1deg-Day_Terra-Aqua-MODIS_Edition4A",
+            temporal_start="2022-07-01",
+            temporal_end="2022-07-03",
+            variable_map={
+                "solar_zenith_angle": {
+                    "model": "solar_cosine",
+                    "transform": "cos_degrees",
+                }
+            },
+        )
+        bridge = self._make_bridge([cfg], [ds])
+        state = _StubImportState()
+
+        bridge.inject_at_time(state, datetime(2022, 7, 1, 12, 0, 0))
+
+        assert np.allclose(state._fields["solar_cosine"], 0.5)
+
+    def test_solar_cosine_rejects_untransformed_angles(self):
+        shape = (len(TIME_COORD), NY, NX)
+        sza = np.full(shape, 60.0, dtype=np.float64)
+        ds = xr.Dataset(
+            {"solar_zenith_angle": (["time", "lat", "lon"], sza)},
+            coords={"time": TIME_COORD, "lat": LAT, "lon": LON},
+        )
+        cfg = EarthAccessStreamConfig(
+            name="ceres_par",
+            short_name="CER_SYN1deg-Day_Terra-Aqua-MODIS_Edition4A",
+            temporal_start="2022-07-01",
+            temporal_end="2022-07-03",
+            variable_map={"solar_zenith_angle": "solar_cosine"},
+        )
+        bridge = self._make_bridge([cfg], [ds])
+        state = _StubImportState()
+
+        with pytest.raises(ValueError, match="solar_cosine.*transform"):
+            bridge.inject_at_time(state, datetime(2022, 7, 1, 12, 0, 0))
 
 
 # =============================================================================

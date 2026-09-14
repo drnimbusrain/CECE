@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 import numpy as np
 
@@ -16,6 +16,39 @@ except ImportError:
 if TYPE_CHECKING:
     # Avoid hard dependency on the pybind11 module at import time
     from ._cece_core import CeceImportState  # type: ignore[import]
+
+
+def _variable_target_and_transform(mapping: Any) -> Tuple[str, Optional[str]]:
+    if isinstance(mapping, str):
+        return mapping, None
+    if isinstance(mapping, dict):
+        target = mapping.get("model") or mapping.get("field") or mapping.get("name")
+        if not target:
+            raise ValueError("earthaccess variable mapping dict must contain 'model'")
+        return str(target), mapping.get("transform")
+    raise TypeError("earthaccess variable mapping must be a string or mapping dict")
+
+
+def _apply_transform(values: np.ndarray, transform: Optional[str]) -> np.ndarray:
+    if transform is None or transform == "none":
+        return values
+    if transform == "cos_degrees":
+        return np.clip(np.cos(np.deg2rad(values)), 0.0, 1.0)
+    if transform == "cos_radians":
+        return np.clip(np.cos(values), 0.0, 1.0)
+    raise ValueError(f"Unsupported earthaccess variable transform: {transform}")
+
+
+def _validate_injected_field(field_name: str, values: np.ndarray) -> None:
+    if not np.all(np.isfinite(values)):
+        raise ValueError(f"earthaccess field {field_name!r} contains non-finite values")
+    if field_name == "solar_cosine" and (
+        float(np.nanmin(values)) < -1.0e-12 or float(np.nanmax(values)) > 1.0 + 1.0e-12
+    ):
+        raise ValueError(
+            "earthaccess field 'solar_cosine' must be in [0, 1]; "
+            "use transform: cos_degrees or transform: cos_radians for solar zenith angle inputs"
+        )
 
 
 class EarthAccessStreamBridge:
@@ -57,6 +90,9 @@ class EarthAccessStreamBridge:
         """
         for ds, cfg in zip(self._datasets, self._configs):
             ds_t = ds.sel(time=t, method="nearest")
-            for nasa_var, cece_field in cfg.variable_map.items():
-                arr = np.asfortranarray(ds_t[nasa_var].values, dtype=np.float64)
+            for nasa_var, mapping in cfg.variable_map.items():
+                cece_field, transform = _variable_target_and_transform(mapping)
+                values = _apply_transform(ds_t[nasa_var].values, transform)
+                arr = np.asfortranarray(values, dtype=np.float64)
+                _validate_injected_field(cece_field, arr)
                 import_state.set_field(cece_field, arr)

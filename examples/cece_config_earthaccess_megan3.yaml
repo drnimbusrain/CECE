@@ -133,7 +133,9 @@ cece_data:
       variables:
         sfc_sw_down_dir_all_1h: par_direct
         sfc_sw_down_dif_all_1h: par_diffuse
-        solar_zenith_angle: solar_cosine
+        solar_zenith_angle:
+          model: solar_cosine
+          transform: cos_degrees
 
     # ------------------------------------------------------------------
     # Surface wind speed — MERRA-2 surface flux diagnostics (GES DISC)
