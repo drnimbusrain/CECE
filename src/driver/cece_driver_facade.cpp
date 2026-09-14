@@ -1390,13 +1390,11 @@ bool CeceDriverOrchestrator::AdvanceTime(const std::string& time_iso8601, void* 
             const int j1 = band_.j1;
 
             // 1. Determine total timesteps (and the per-timestep shape) for the
-            //    input variable. amio_describe answers both from the file's
-            //    metadata without staging any payload, replacing the old
-            //    binary search that probed amio_read at ~20 record indices --
-            //    each probe a full-record read, which is exactly the traffic
-            //    band-scoped reads exist to avoid. Results are cached per
-            //    handle_key (record count) and per (handle_key, variable)
-            //    (shape) so the query runs at most once per file/variable.
+            //    input variable. This AMIO version does not expose a metadata
+            //    descriptor call, so probe record 0 for its shape and use bounded read probing for
+            //    the record count. Results are cached per handle_key (record
+            //    count) and per (handle_key, variable) (shape) so the query runs
+            //    at most once per file/variable.
             int file_nt = 1;
             amio_shape_t var_shape{};
             bool have_shape = false;
@@ -1411,27 +1409,41 @@ bool CeceDriverOrchestrator::AdvanceTime(const std::string& time_iso8601, void* 
                 file_nt = nt_it->second;
             }
             if (nt_it == file_nt_cache_.end() || !have_shape) {
-                int64_t nt64 = 0;
-                amio_shape_t desc_shape{};
-                amio_status_t desc_rc = amio_describe(read_dataset, input_var_name.c_str(), &desc_shape, &nt64);
-                if (desc_rc == AMIO_OK && nt64 > 0) {
-                    file_nt = static_cast<int>(nt64);
-                    var_shape = desc_shape;
-                    have_shape = true;
-                    file_nt_cache_[handle_key] = file_nt;
-                    var_shape_cache_[shape_key] = var_shape;
-                } else {
-                    // Metadata unavailable (absent variable, corrupt file, ...).
-                    // There is deliberately no read-probing fallback here: the
-                    // historical binary search probed amio_read at ~20 record
-                    // indices, each probe a full-record read — exactly the
-                    // traffic this band-scoped design exists to avoid — and
-                    // CECE always builds against the pinned AMIO submodule,
-                    // which provides amio_describe. Fail the step instead:
-                    // file_nt = 0 makes the collective readiness gate below
-                    // report a detailed error for this variable.
-                    CECE_LOG_WARNING("[DRIVER] amio_describe failed for '" + input_var_name + "' in '" + cfg.input_file_path +
-                                     "' (rc=" + std::to_string(static_cast<int>(desc_rc)) + "); no record-count fallback is attempted.");
+                amio_view_handle shape_view = nullptr;
+                amio_status_t shape_rc = amio_read(read_dataset, input_var_name.c_str(), 0, nullptr, &shape_view);
+                if (shape_rc == AMIO_OK) {
+                    amio_shape_t probe_shape{};
+                    shape_rc = amio_view_shape(shape_view, &probe_shape);
+                    amio_release_view(shape_view);
+                    if (shape_rc == AMIO_OK && probe_shape.rank >= 2) {
+                        var_shape = probe_shape;
+                        have_shape = true;
+                        var_shape_cache_[shape_key] = var_shape;
+
+                        if (nt_it == file_nt_cache_.end()) {
+                            int low = 1;
+                            int high = 1000000;
+                            int found_nt = 1;
+                            while (low <= high) {
+                                const int mid = low + (high - low) / 2;
+                                amio_view_handle probe_view = nullptr;
+                                const amio_status_t probe_rc = amio_read(read_dataset, input_var_name.c_str(), mid, nullptr, &probe_view);
+                                if (probe_rc == AMIO_OK) {
+                                    amio_release_view(probe_view);
+                                    found_nt = mid + 1;
+                                    low = mid + 1;
+                                } else {
+                                    high = mid - 1;
+                                }
+                            }
+                            file_nt = found_nt;
+                            file_nt_cache_[handle_key] = file_nt;
+                        }
+                    }
+                }
+                if (!have_shape || file_nt <= 0) {
+                    CECE_LOG_WARNING("[DRIVER] AMIO metadata probe failed for '" + input_var_name + "' in '" + cfg.input_file_path +
+                                     "'; record-count or shape probing was unsuccessful.");
                     file_nt = 0;
                 }
             }
@@ -1631,7 +1643,7 @@ bool CeceDriverOrchestrator::AdvanceTime(const std::string& time_iso8601, void* 
                     // Band-scoped read: when the plan carries an exact source-row
                     // window (build_regrid_plan derives it from the weight matrix's
                     // column range) and the variable's per-timestep shape is known
-                    // (amio_describe), the on-disk fetch is restricted to rows
+                    // from the cached AMIO shape probe, the on-disk fetch is restricted to rows
                     // [src_j0, src_j0 + src_rows). Without this every rank pulls the
                     // WHOLE global record from shared storage and discards all but
                     // its band's footprint -- nranks-fold replicated IO that made
