@@ -314,6 +314,8 @@ def main() -> int:
                 str(lon_file),
                 "--lat-file",
                 str(lat_file),
+                "--download-dir",
+                str(step_dir / "granules"),
             ],
             check=True,
         )

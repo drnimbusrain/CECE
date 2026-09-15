@@ -25,7 +25,7 @@ Automates the creation of example CECE configuration files and generates downloa
 ### `stage_earthaccess_streams.py`
 Stages NASA Earthdata-backed `source: earthaccess` streams into CECE's native per-step cache format. Run it on a login or data-transfer node with outbound HTTPS access, then point compute jobs at the staged directory with `CECE_EARTHACCESS_STAGE_DIR`.
 
-The staging helper currently reads remote files through `xarray+h5netcdf`, so `source: earthaccess` streams should use NetCDF4/HDF5-readable collections. HDF-EOS `.hdf` granules are detected during preflight and should be pre-converted to NetCDF before compute-node runs.
+The staging helper downloads protected granules into each staged step's `granules/` cache before opening them with `xarray+h5netcdf`, so `source: earthaccess` streams should use NetCDF4/HDF5-readable collections. HDF-EOS `.hdf` granules are detected during preflight and should be pre-converted to NetCDF before compute-node runs.
 ```bash
 python scripts/stage_earthaccess_streams.py \
 	--config examples/cece_config_earthaccess_megan3.yaml \

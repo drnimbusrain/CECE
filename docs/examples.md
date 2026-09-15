@@ -230,7 +230,7 @@ unset EARTHDATA_TOKEN
 srun -n 1 ./build-ursa-earthaccess/cece_standalone_driver examples/cece_config_earthaccess_megan3.yaml
 ```
 
-The staged directory contains one subdirectory per model timestep, named `step_0`, `step_1`, and so on. Each step directory contains `manifest.txt` and raw `*.f64` field arrays. When `CECE_EARTHACCESS_STAGE_DIR` is set, the native driver reads those files directly and does not invoke the EarthAccess helper or open network connections.
+The staged directory contains one subdirectory per model timestep, named `step_0`, `step_1`, and so on. Each step directory contains `manifest.txt`, raw `*.f64` field arrays, and a `granules/` download cache used during staging. The staging helper downloads protected Earthdata granules into that cache before opening them with xarray, which avoids remote fsspec streaming failures such as GES DISC HTTPS `403 Forbidden` responses. When `CECE_EARTHACCESS_STAGE_DIR` is set, the native driver reads the staged `manifest.txt` and `*.f64` files directly and does not invoke the EarthAccess helper or open network connections.
 
 For a complete Ursa example that combines login-node staging with a compute-node Slurm run, use:
 

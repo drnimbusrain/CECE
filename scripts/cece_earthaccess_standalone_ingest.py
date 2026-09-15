@@ -208,7 +208,31 @@ def _raise_if_unsupported_granule_format(stream: dict, granules: List[Any]) -> N
     )
 
 
-def _open_dataset(stream: dict) -> Any:
+def _download_granules(
+    granules: List[Any], download_dir: Path, provider: Any
+) -> List[Path]:
+    import earthaccess
+
+    download_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        paths = earthaccess.download(
+            granules,
+            local_path=download_dir,
+            provider=provider,
+            threads=int(os.getenv("CECE_EARTHACCESS_DOWNLOAD_THREADS", "8")),
+            show_progress=False,
+        )
+    except Exception as exc:
+        raise RuntimeError(
+            "EarthAccess granule download failed. Confirm the active Earthdata credentials "
+            "are authorized for this provider and collection. "
+            f"provider={provider!r}, download_dir={str(download_dir)!r}, "
+            f"error={exc.__class__.__name__}: {exc}"
+        ) from exc
+    return [Path(path) for path in paths]
+
+
+def _open_dataset(stream: dict, download_dir: Optional[Path] = None) -> Any:
     import earthaccess
     import xarray as xr
 
@@ -243,6 +267,10 @@ def _open_dataset(stream: dict) -> Any:
     if stream.get("cache_type") is not None:
         open_kwargs["cache_type"] = stream["cache_type"]
 
+    if download_dir is not None:
+        local_paths = _download_granules(granules, download_dir, provider)
+        return xr.open_mfdataset(local_paths, engine="h5netcdf", combine="by_coords")
+
     try:
         file_objs = (
             earthaccess.open(granules, **open_kwargs)
@@ -262,6 +290,11 @@ def main() -> int:
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument("--lon-file", required=True, type=Path)
     parser.add_argument("--lat-file", required=True, type=Path)
+    parser.add_argument(
+        "--download-dir",
+        type=Path,
+        help="Optional directory where protected EarthAccess granules are downloaded before xarray opens them",
+    )
     args = parser.parse_args()
 
     config = yaml.safe_load(args.config.read_text())
@@ -279,7 +312,12 @@ def main() -> int:
 
     manifest_lines = []
     for stream in streams:
-        dataset = _open_dataset(stream)
+        stream_download_dir = None
+        if args.download_dir is not None:
+            stream_download_dir = args.download_dir / _safe_name(
+                stream.get("name", "stream")
+            )
+        dataset = _open_dataset(stream, stream_download_dir)
         try:
             for nasa_var, mapping in (stream.get("variables") or {}).items():
                 field_name, transform = _mapping_target_and_transform(mapping)

@@ -808,6 +808,40 @@ class TestStandaloneEarthAccessIngestHelper:
 
         _standalone_ingest_mod._raise_if_unsupported_granule_format(stream, granules)
 
+    def test_helper_downloads_before_opening_when_download_dir_is_set(self, tmp_path):
+        mock_ea = MagicMock()
+        mock_ea.login.return_value = MagicMock()
+        mock_ea.search_data.return_value = [
+            self._FakeGranule(
+                ["https://data.gesdisc.earthdata.nasa.gov/data/MERRA2/file.nc4"]
+            )
+        ]
+        local_path = tmp_path / "granules" / "file.nc4"
+        mock_ea.download.return_value = [local_path]
+
+        mock_xr = MagicMock()
+        mock_xr.open_mfdataset.return_value = MagicMock()
+
+        with patch.dict(sys.modules, {"earthaccess": mock_ea, "xarray": mock_xr}):
+            result = _standalone_ingest_mod._open_dataset(
+                {
+                    "name": "merra2_lai",
+                    "short_name": "M2T1NXLND",
+                    "temporal_start": "2022-07-01",
+                    "temporal_end": "2022-07-04",
+                    "cloud_hosted": True,
+                    "daac": "GES_DISC",
+                },
+                tmp_path / "granules",
+            )
+
+        assert result is mock_xr.open_mfdataset.return_value
+        mock_ea.download.assert_called_once()
+        assert mock_ea.download.call_args.kwargs["provider"] == "GES_DISC"
+        mock_xr.open_mfdataset.assert_called_once_with(
+            [local_path], engine="h5netcdf", combine="by_coords"
+        )
+
     def test_helper_interpolates_to_target_grid(self):
         ds = xr.Dataset(
             {
