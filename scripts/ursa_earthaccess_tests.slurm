@@ -11,10 +11,30 @@
 
 set -euo pipefail
 
-# Submit from the CECE repository root:
-#   sbatch scripts/ursa_earthaccess_tests.slurm
+# Run from the CECE repository root on an Ursa login node. This prepares the
+# Python environment where outbound network access is available, then submits
+# the Slurm job. Compute nodes should only activate the prepared environment.
+#   bash scripts/ursa_earthaccess_tests.slurm
 # Live Earthdata tests require ~/.netrc or EARTHDATA_USERNAME/EARTHDATA_TOKEN:
-#   LIVE_EARTHDATA=1 sbatch scripts/ursa_earthaccess_tests.slurm
+#   LIVE_EARTHDATA=1 bash scripts/ursa_earthaccess_tests.slurm
+
+if [[ -z "${SLURM_JOB_ID:-}" ]]; then
+  cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+  module purge
+  module use "${PWD}/modulefiles"
+  module load cece_ursa.intel
+
+  export CECE_EARTHACCESS_VENV="${CECE_EARTHACCESS_VENV:-${PWD}/.venv-ursa-earthaccess}"
+  python -m venv "${CECE_EARTHACCESS_VENV}"
+  source "${CECE_EARTHACCESS_VENV}/bin/activate"
+  python -m pip install --upgrade pip setuptools wheel
+  python -m pip install -e '.[cloud,test]'
+
+  export LIVE_EARTHDATA="${LIVE_EARTHDATA:-0}"
+  sbatch "$0"
+  exit 0
+fi
 
 module purge
 module use "${SLURM_SUBMIT_DIR}/modulefiles"
@@ -24,10 +44,13 @@ cd "${SLURM_SUBMIT_DIR}"
 
 export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-1}"
 
-python -m venv .venv-ursa-earthaccess
-source .venv-ursa-earthaccess/bin/activate
-python -m pip install --upgrade pip setuptools wheel
-python -m pip install -e '.[cloud,test]'
+CECE_EARTHACCESS_VENV="${CECE_EARTHACCESS_VENV:-${SLURM_SUBMIT_DIR}/.venv-ursa-earthaccess}"
+if [[ ! -x "${CECE_EARTHACCESS_VENV}/bin/python" ]]; then
+  echo "Prepared Python environment not found: ${CECE_EARTHACCESS_VENV}" >&2
+  echo "Run from an Ursa login node first: bash scripts/ursa_earthaccess_tests.slurm" >&2
+  exit 2
+fi
+source "${CECE_EARTHACCESS_VENV}/bin/activate"
 
 cmake -S . -B build-ursa-earthaccess \
   -DCMAKE_BUILD_TYPE=Release \
