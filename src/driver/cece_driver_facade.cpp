@@ -237,10 +237,26 @@ fs::path resolve_earthaccess_helper(const std::string& config_file) {
         if (*configured != '\0') return fs::path(configured);
     }
 
+    const fs::path config_path = fs::absolute(fs::path(config_file));
+    try {
+        YAML::Node config = YAML::LoadFile(config_file);
+        const YAML::Node configured = config["driver"]["earthaccess_helper"];
+        if (configured && configured.IsScalar()) {
+            fs::path helper_path(configured.as<std::string>());
+            if (helper_path.is_relative()) {
+                helper_path = config_path.parent_path() / helper_path;
+            }
+            return helper_path;
+        }
+    } catch (const YAML::Exception&) {
+        // The main driver parse reports malformed configuration elsewhere.
+        // Continue to the conventional helper locations here for a useful
+        // missing-helper diagnostic rather than masking the original error.
+    }
+
     const fs::path cwd_helper = fs::current_path() / "scripts" / "cece_earthaccess_standalone_ingest.py";
     if (fs::exists(cwd_helper)) return cwd_helper;
 
-    const fs::path config_path = fs::absolute(fs::path(config_file));
     for (fs::path dir = config_path.parent_path(); !dir.empty(); dir = dir.parent_path()) {
         const fs::path candidate = dir / "scripts" / "cece_earthaccess_standalone_ingest.py";
         if (fs::exists(candidate)) return candidate;

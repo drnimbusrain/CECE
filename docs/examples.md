@@ -157,7 +157,14 @@ Run the live Earthdata tests with:
 pytest tests/test_earthaccess_stream_bdsnp_megan3.py -v -m live_earthdata
 ```
 
-The native standalone driver also uses the cloud extras when a config contains `source: earthaccess` streams. It invokes `scripts/cece_earthaccess_standalone_ingest.py` at each timestep, then injects the returned arrays into the C++ import state before physics runs. Run the driver from the CECE repository root, or set `CECE_EARTHACCESS_HELPER` to the helper path. Set `CECE_PYTHON` if the `earthaccess` environment is not the default `python3`:
+The native standalone driver also uses the cloud extras when a config contains `source: earthaccess` streams. It invokes the helper at each timestep, then injects the returned arrays into the C++ import state before physics runs. You can define the helper path directly in YAML:
+
+```yaml
+driver:
+	earthaccess_helper: "../scripts/cece_earthaccess_standalone_ingest.py"
+```
+
+Relative helper paths are resolved from the YAML configuration file's directory. An absolute path is also accepted. `CECE_EARTHACCESS_HELPER` takes precedence over the YAML setting, which is useful for deployment overrides. If neither is set, the driver searches the current directory and parent directories for `scripts/cece_earthaccess_standalone_ingest.py`. Set `CECE_PYTHON` if the `earthaccess` environment is not the default `python3`:
 
 ```bash
 export CECE_PYTHON=/path/to/venv/bin/python

@@ -24,6 +24,8 @@ driver:
   start_time: "2022-07-01T00:00:00"
   end_time: "2022-07-03T23:00:00"
   timestep_seconds: 3600
+  # Optional. Relative paths are resolved from this YAML file's directory.
+  earthaccess_helper: "../scripts/cece_earthaccess_standalone_ingest.py"
   # HEMCO reference 4x5 grid — matches PR #85 (SoilNOx) and PR #90 (MEGAN) parity grids
   grid:
     grid_name: "HEMCO_4x5"

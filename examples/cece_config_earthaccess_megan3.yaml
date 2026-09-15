@@ -25,6 +25,8 @@ driver:
   end_time: "2022-07-03T23:00:00"
   timestep_seconds: 3600
   log_file: "./logs/cece_earthaccess_megan3.log"
+  # Optional. Relative paths are resolved from this YAML file's directory.
+  earthaccess_helper: "../scripts/cece_earthaccess_standalone_ingest.py"
   amio_worker_threads: 1
   amio_staging_buffer_count: 8
   grid:
