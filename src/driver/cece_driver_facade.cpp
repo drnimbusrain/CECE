@@ -1,11 +1,15 @@
 #include "cece/cece_driver_facade.hpp"
 
 #include <amio/amio.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #include <yaml-cpp/yaml.h>
 
 #include <Kokkos_Core.hpp>
 #include <algorithm>
 #include <axis/axis.hpp>
+#include <cerrno>
 #include <cmath>
 #include <cstdlib>
 #include <dagr/logging.hpp>
@@ -209,19 +213,6 @@ bool collective_int_matches(halo::Communicator* halo_comm, MPI_Comm comm, int lo
     }
 }
 
-std::string shell_quote(const std::string& value) {
-    std::string quoted = "'";
-    for (char ch : value) {
-        if (ch == '\'') {
-            quoted += "'\\''";
-        } else {
-            quoted += ch;
-        }
-    }
-    quoted += "'";
-    return quoted;
-}
-
 bool write_vector_file(const fs::path& path, const std::vector<double>& values) {
     std::ofstream out(path);
     if (!out) return false;
@@ -230,6 +221,35 @@ bool write_vector_file(const fs::path& path, const std::vector<double>& values) 
         out << value << '\n';
     }
     return true;
+}
+
+int run_process(const std::vector<std::string>& args) {
+    if (args.empty()) return 127;
+
+    std::vector<char*> argv;
+    argv.reserve(args.size() + 1);
+    for (const std::string& arg : args) {
+        argv.push_back(const_cast<char*>(arg.c_str()));
+    }
+    argv.push_back(nullptr);
+
+    const pid_t child = fork();
+    if (child < 0) return errno;
+    if (child == 0) {
+        execvp(argv.front(), argv.data());
+        _exit(127);
+    }
+
+    int status = 0;
+    pid_t waited = 0;
+    do {
+        waited = waitpid(child, &status, 0);
+    } while (waited < 0 && errno == EINTR);
+
+    if (waited < 0) return errno;
+    if (WIFEXITED(status)) return WEXITSTATUS(status);
+    if (WIFSIGNALED(status)) return 128 + WTERMSIG(status);
+    return status;
 }
 
 fs::path resolve_earthaccess_helper(const std::string& config_file) {
@@ -248,10 +268,11 @@ fs::path resolve_earthaccess_helper(const std::string& config_file) {
             }
             return helper_path;
         }
-    } catch (const YAML::Exception&) {
+    } catch (const YAML::Exception& ex) {
         // The main driver parse reports malformed configuration elsewhere.
         // Continue to the conventional helper locations here for a useful
         // missing-helper diagnostic rather than masking the original error.
+        CECE_LOG_DEBUG(std::string("[DRIVER] Could not read earthaccess_helper override: ") + ex.what());
     }
 
     const fs::path cwd_helper = fs::current_path() / "scripts" / "cece_earthaccess_standalone_ingest.py";
@@ -1202,12 +1223,9 @@ bool CeceDriverOrchestrator::IngestEarthAccessStreams(const std::string& time_is
                                "'. Set CECE_EARTHACCESS_HELPER or run from the CECE repository root.");
                 helper_status = 1;
             } else {
-                std::ostringstream command;
-                command << shell_quote(python) << " " << shell_quote(helper.string()) << " --config " << shell_quote(config_file_) << " --time "
-                        << shell_quote(time_iso8601) << " --output-dir " << shell_quote(work_dir.string()) << " --lon-file "
-                        << shell_quote(lon_file.string()) << " --lat-file " << shell_quote(lat_file.string());
                 CECE_LOG_INFO("[DRIVER] Fetching earthaccess streams for " + time_iso8601);
-                helper_status = std::system(command.str().c_str());
+                helper_status = run_process({python, helper.string(), "--config", config_file_, "--time", time_iso8601, "--output-dir",
+                                             work_dir.string(), "--lon-file", lon_file.string(), "--lat-file", lat_file.string()});
                 if (helper_status != 0) {
                     CECE_LOG_ERROR("[DRIVER] Earthaccess ingestion helper failed with status " + std::to_string(helper_status));
                 }
