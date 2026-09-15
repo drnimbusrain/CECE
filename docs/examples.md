@@ -228,7 +228,9 @@ python scripts/stage_earthaccess_streams.py \
 
 Before using the `netrc` strategy, run `unset EARTHDATA_TOKEN` so an expired bearer token cannot be reused by EarthAccess or inherited helper processes. The staging script also removes this variable automatically in `netrc` mode.
 
-`--check-download-access` downloads one sample granule per stream into a temporary directory. This verifies protected-file authorization in addition to CMR search results. If EarthAccess raises `EulaNotAccepted`, sign in at <https://urs.earthdata.nasa.gov/profile>, review the account's Authorized Apps and associated provider terms, accept the required EULA, then refresh the credentials used on Ursa and rerun preflight. CECE cannot accept legal terms on behalf of an Earthdata account.
+`--check-download-access` downloads one sample granule per stream into a temporary directory. This verifies protected-file authorization in addition to CMR search results. If EarthAccess raises `EulaNotAccepted`, the error includes the exact protected data URL. Open that URL in a browser, sign in with the same Earthdata account stored in Ursa's `~/.netrc`, follow the redirect to authorize the GES DISC application, and accept any displayed terms. Confirm the application appears under Authorized Apps at <https://urs.earthdata.nasa.gov/profile>, then rerun preflight with `--auth-strategy netrc`. CECE cannot accept legal terms on behalf of an Earthdata account.
+
+If authorization was completed with a different browser account, sign out of Earthdata Login and repeat the protected-URL flow with the username shown in `~/.netrc`. If the account password changed, update `~/.netrc`; if an old bearer token is exported, run `unset EARTHDATA_TOKEN` before retrying.
 
 Use Earthdata Cloud provider IDs in `source: earthaccess` streams. For example, LP DAAC cloud-hosted MODIS collections should use `daac: LPCLOUD`, not the legacy archive provider `LPDAAC_ECS`.
 

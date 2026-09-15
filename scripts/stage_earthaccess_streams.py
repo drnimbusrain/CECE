@@ -250,12 +250,15 @@ def _preflight_streams(
                     if not paths:
                         raise RuntimeError("EarthAccess returned no downloaded files")
             except EulaNotAccepted as exc:
+                protected_url = _first_data_link(granules)
                 raise RuntimeError(
                     "NASA Earthdata search succeeded, but protected download authorization "
-                    f"failed for stream {stream.get('name', '<unnamed>')!r}. Sign in at "
-                    "https://urs.earthdata.nasa.gov/profile, review Authorized Apps/associated "
-                    "provider terms, accept the required EULA, refresh local EarthAccess "
-                    f"credentials, and retry. provider={provider!r}, error={exc}"
+                    f"failed for stream {stream.get('name', '<unnamed>')!r}. In a web browser, "
+                    "sign in to the same Earthdata account used by ~/.netrc, open the protected "
+                    "file URL below, follow the redirect to authorize GES DISC and accept any "
+                    "displayed terms, then retry with --auth-strategy netrc. Verify the app at "
+                    "https://urs.earthdata.nasa.gov/profile under Authorized Apps. "
+                    f"protected_url={protected_url!r}, provider={provider!r}, error={exc}"
                 ) from exc
         print(
             f"preflight ok: {stream.get('name', '<unnamed>')} "

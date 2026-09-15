@@ -255,12 +255,16 @@ def _download_granules(
             show_progress=False,
         )
     except EulaNotAccepted as exc:
+        protected_url = _first_data_link(granules)
         raise RuntimeError(
             "NASA Earthdata denied this protected download because the account has not "
-            "accepted the required EULA or authorized the provider application. Sign in "
-            "at https://urs.earthdata.nasa.gov/profile, review Authorized Apps/associated "
-            "terms for the data provider, accept the required terms, then refresh the local "
-            "EarthAccess credentials and retry. "
+            "accepted the required EULA or authorized the provider application. In a web "
+            "browser, sign in to the same Earthdata account used by ~/.netrc, open the "
+            "protected file URL below, follow the redirect to authorize GES DISC and accept "
+            "any displayed terms, then retry with --auth-strategy netrc. Also verify the "
+            "application appears at https://urs.earthdata.nasa.gov/profile under Authorized "
+            "Apps. "
+            f"protected_url={protected_url!r}, "
             f"provider={provider!r}, download_dir={str(download_dir)!r}, error={exc}"
         ) from exc
     except Exception as exc:
