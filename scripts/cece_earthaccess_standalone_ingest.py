@@ -212,6 +212,7 @@ def _download_granules(
     granules: List[Any], download_dir: Path, provider: Any
 ) -> List[Path]:
     import earthaccess
+    from earthaccess.exceptions import EulaNotAccepted
 
     download_dir.mkdir(parents=True, exist_ok=True)
     try:
@@ -222,6 +223,15 @@ def _download_granules(
             threads=int(os.getenv("CECE_EARTHACCESS_DOWNLOAD_THREADS", "8")),
             show_progress=False,
         )
+    except EulaNotAccepted as exc:
+        raise RuntimeError(
+            "NASA Earthdata denied this protected download because the account has not "
+            "accepted the required EULA or authorized the provider application. Sign in "
+            "at https://urs.earthdata.nasa.gov/profile, review Authorized Apps/associated "
+            "terms for the data provider, accept the required terms, then refresh the local "
+            "EarthAccess credentials and retry. "
+            f"provider={provider!r}, download_dir={str(download_dir)!r}, error={exc}"
+        ) from exc
     except Exception as exc:
         raise RuntimeError(
             "EarthAccess granule download failed. Confirm the active Earthdata credentials "

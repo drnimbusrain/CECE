@@ -36,6 +36,7 @@ python scripts/stage_earthaccess_streams.py \
 	--config examples/cece_config_earthaccess_megan3.yaml \
 	--stage-dir /scratch/$USER/cece_earthaccess_stage \
 	--preflight-only \
+	--check-download-access \
 	--auth-strategy netrc
 
 export CECE_EARTHACCESS_STAGE_DIR=/scratch/$USER/cece_earthaccess_stage

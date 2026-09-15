@@ -842,6 +842,20 @@ class TestStandaloneEarthAccessIngestHelper:
             [local_path], engine="h5netcdf", combine="by_coords"
         )
 
+    def test_helper_reports_eula_authorization_failure(self, tmp_path):
+        from earthaccess.exceptions import EulaNotAccepted
+
+        mock_ea = MagicMock()
+        mock_ea.download.side_effect = EulaNotAccepted(
+            "Eula Acceptance Failure for https://example.test/file.nc4"
+        )
+
+        with patch.dict(sys.modules, {"earthaccess": mock_ea}):
+            with pytest.raises(RuntimeError, match="urs.earthdata.nasa.gov/profile"):
+                _standalone_ingest_mod._download_granules(
+                    [MagicMock()], tmp_path / "granules", "GES_DISC"
+                )
+
     def test_helper_interpolates_to_target_grid(self):
         ds = xr.Dataset(
             {

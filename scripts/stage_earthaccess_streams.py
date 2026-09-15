@@ -14,6 +14,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple
@@ -183,8 +184,11 @@ def _raise_if_unsupported_granule_format(
     )
 
 
-def _preflight_streams(config: Dict[str, Any], auth_strategy: str) -> None:
+def _preflight_streams(
+    config: Dict[str, Any], auth_strategy: str, check_download_access: bool
+) -> None:
     import earthaccess
+    from earthaccess.exceptions import EulaNotAccepted
 
     earthaccess.login(strategy=auth_strategy)
     for stream in _earthaccess_streams(config):
@@ -209,8 +213,31 @@ def _preflight_streams(config: Dict[str, Any], auth_strategy: str) -> None:
                 f"bounding_box={stream.get('bounding_box')!r})"
             )
         _raise_if_unsupported_granule_format(stream, granules)
+        if check_download_access:
+            try:
+                with tempfile.TemporaryDirectory(
+                    prefix="cece-earthaccess-preflight-"
+                ) as temp_dir:
+                    paths = earthaccess.download(
+                        granules,
+                        local_path=temp_dir,
+                        provider=provider,
+                        threads=1,
+                        show_progress=False,
+                    )
+                    if not paths:
+                        raise RuntimeError("EarthAccess returned no downloaded files")
+            except EulaNotAccepted as exc:
+                raise RuntimeError(
+                    "NASA Earthdata search succeeded, but protected download authorization "
+                    f"failed for stream {stream.get('name', '<unnamed>')!r}. Sign in at "
+                    "https://urs.earthdata.nasa.gov/profile, review Authorized Apps/associated "
+                    "provider terms, accept the required EULA, refresh local EarthAccess "
+                    f"credentials, and retry. provider={provider!r}, error={exc}"
+                ) from exc
         print(
-            f"preflight ok: {stream.get('name', '<unnamed>')} ({len(granules)} sample granule)"
+            f"preflight ok: {stream.get('name', '<unnamed>')} "
+            f"({len(granules)} sample granule, download_access={check_download_access})"
         )
 
 
@@ -258,6 +285,11 @@ def main() -> int:
         default=os.getenv("CECE_EARTHACCESS_AUTH_STRATEGY", "all"),
         help="EarthAccess login strategy: all, environment, netrc, or interactive",
     )
+    parser.add_argument(
+        "--check-download-access",
+        action="store_true",
+        help="During preflight, download one granule per stream to verify EULA/provider authorization",
+    )
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[1]
@@ -267,7 +299,7 @@ def main() -> int:
     driver = config.get("driver") or {}
 
     if args.preflight_only:
-        _preflight_streams(config, args.auth_strategy)
+        _preflight_streams(config, args.auth_strategy, args.check_download_access)
         return 0
 
     start_time = _parse_datetime(args.start_time or str(driver["start_time"]))
@@ -300,25 +332,32 @@ def main() -> int:
         _write_vector(lon_file, target_lons)
         _write_vector(lat_file, target_lats)
 
-        subprocess.run(
-            [
-                sys.executable,
-                str(helper_path),
-                "--config",
-                str(config_path),
-                "--time",
-                step_time.isoformat(),
-                "--output-dir",
-                str(step_dir),
-                "--lon-file",
-                str(lon_file),
-                "--lat-file",
-                str(lat_file),
-                "--download-dir",
-                str(step_dir / "granules"),
-            ],
-            check=True,
-        )
+        helper_env = os.environ.copy()
+        helper_env["CECE_EARTHACCESS_AUTH_STRATEGY"] = args.auth_strategy
+        try:
+            subprocess.run(
+                [
+                    sys.executable,
+                    str(helper_path),
+                    "--config",
+                    str(config_path),
+                    "--time",
+                    step_time.isoformat(),
+                    "--output-dir",
+                    str(step_dir),
+                    "--lon-file",
+                    str(lon_file),
+                    "--lat-file",
+                    str(lat_file),
+                    "--download-dir",
+                    str(step_dir / "granules"),
+                ],
+                check=True,
+                env=helper_env,
+            )
+        except Exception:
+            shutil.rmtree(step_dir, ignore_errors=True)
+            raise
         staged_steps.append(step_index)
 
     _copy_stage_metadata(stage_dir, config_path, len(staged_steps))

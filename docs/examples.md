@@ -214,8 +214,11 @@ python scripts/stage_earthaccess_streams.py \
 	--config examples/cece_config_earthaccess_megan3.yaml \
 	--stage-dir /scratch/$USER/cece_earthaccess_stage \
 	--preflight-only \
+	--check-download-access \
 	--auth-strategy netrc
 ```
+
+`--check-download-access` downloads one sample granule per stream into a temporary directory. This verifies protected-file authorization in addition to CMR search results. If EarthAccess raises `EulaNotAccepted`, sign in at <https://urs.earthdata.nasa.gov/profile>, review the account's Authorized Apps and associated provider terms, accept the required EULA, then refresh the credentials used on Ursa and rerun preflight. CECE cannot accept legal terms on behalf of an Earthdata account.
 
 Use Earthdata Cloud provider IDs in `source: earthaccess` streams. For example, LP DAAC cloud-hosted MODIS collections should use `daac: LPCLOUD`, not the legacy archive provider `LPDAAC_ECS`.
 
