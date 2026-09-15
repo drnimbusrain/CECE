@@ -934,6 +934,23 @@ class TestStandaloneEarthAccessIngestHelper:
 
                 mock_xr.open_dataset.return_value.__exit__.assert_called_once()
 
+    def test_stage_preflight_reports_missing_h5py(self):
+        original_import = __import__
+
+        def import_without_h5py(name, *args, **kwargs):
+            if name == "h5py":
+                raise ImportError("No module named 'h5py'")
+            return original_import(name, *args, **kwargs)
+
+        with patch("builtins.__import__", side_effect=import_without_h5py):
+            with pytest.raises(
+                RuntimeError, match=r"pip install -e '\.\[cloud,test\]'"
+            ):
+                _stage_mod._validate_downloaded_variables(
+                    {"name": "merra2_par", "variables": {"PARDR": "par_direct"}},
+                    ["sample.nc4"],
+                )
+
     def test_helper_interpolates_to_target_grid(self):
         ds = xr.Dataset(
             {

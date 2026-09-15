@@ -85,12 +85,14 @@ import dask
 import earthaccess
 import fsspec
 import h5netcdf
+import h5py
 import s3fs
 import xarray
 
 print("earthaccess:", getattr(earthaccess, "__version__", "installed"))
 print("xarray:", xarray.__version__)
 print("h5netcdf:", h5netcdf.__version__)
+print("h5py:", h5py.__version__)
 print("fsspec:", fsspec.__version__)
 print("s3fs:", s3fs.__version__)
 print("dask:", dask.__version__)

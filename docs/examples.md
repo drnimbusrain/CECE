@@ -60,7 +60,7 @@ python -m pip install -e '.[cloud,test]'
 
 The quoted `'.[cloud,test]'` argument installs the local package plus optional dependency groups declared in `pyproject.toml`:
 
--   `cloud`: `earthaccess`, `xarray`, `h5netcdf`, `fsspec`, `s3fs`, and `dask`
+-   `cloud`: `earthaccess`, `xarray`, `h5netcdf`, `h5py`, `fsspec`, `s3fs`, and `dask`
 -   `test`: `pytest`
 
 The quotes are important because many shells treat square brackets as glob characters. Quoting ensures `pip` receives the extras expression unchanged.
@@ -88,6 +88,7 @@ python - <<'PY'
 import earthaccess
 import xarray
 import h5netcdf
+import h5py
 import fsspec
 import s3fs
 import dask
@@ -95,6 +96,7 @@ import dask
 print("earthaccess:", getattr(earthaccess, "__version__", "installed"))
 print("xarray:", xarray.__version__)
 print("h5netcdf:", h5netcdf.__version__)
+print("h5py:", h5py.__version__)
 print("fsspec:", fsspec.__version__)
 print("s3fs:", s3fs.__version__)
 print("dask:", dask.__version__)

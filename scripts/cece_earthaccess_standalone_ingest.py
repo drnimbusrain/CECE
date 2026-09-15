@@ -281,6 +281,15 @@ def _open_dataset(stream: dict, download_dir: Optional[Path] = None) -> Any:
     import earthaccess
     import xarray as xr
 
+    try:
+        import h5py  # noqa: F401
+    except ImportError as exc:
+        raise RuntimeError(
+            "The h5netcdf backend requires h5py to read EarthAccess NetCDF4 files. "
+            "Install or refresh CECE cloud dependencies with: "
+            "python -m pip install -e '.[cloud,test]'"
+        ) from exc
+
     strategy = _auth_strategy()
     _prepare_auth_environment(strategy)
     provider = _effective_provider(stream)

@@ -214,6 +214,15 @@ def _raise_if_unsupported_granule_format(
 
 
 def _validate_downloaded_variables(stream: Dict[str, Any], paths: List[Any]) -> None:
+    try:
+        import h5py  # noqa: F401
+    except ImportError as exc:
+        raise RuntimeError(
+            "The h5netcdf backend requires h5py to read staged NetCDF4 files. "
+            "Install or refresh CECE cloud dependencies with: "
+            "python -m pip install -e '.[cloud,test]'"
+        ) from exc
+
     import xarray as xr
 
     if not paths:
