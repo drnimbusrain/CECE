@@ -15,8 +15,12 @@ set -euo pipefail
 # Python environment where outbound network access is available, then submits
 # the Slurm job. Compute nodes should only activate the prepared environment.
 #   bash scripts/ursa_earthaccess_tests.slurm
-# Live Earthdata tests require ~/.netrc or EARTHDATA_USERNAME/EARTHDATA_TOKEN:
+# Ursa compute nodes may not have outbound HTTPS access. Keep remote
+# EarthAccess checks on the login node unless your allocation/site policy
+# explicitly provides compute-node network access.
 #   LIVE_EARTHDATA=1 bash scripts/ursa_earthaccess_tests.slurm
+# To opt into compute-node EarthAccess fetches on systems where that is allowed:
+#   ALLOW_COMPUTE_EARTHACCESS=1 LIVE_EARTHDATA=1 bash scripts/ursa_earthaccess_tests.slurm
 
 if [[ -z "${SLURM_JOB_ID:-}" ]]; then
   cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -31,7 +35,25 @@ if [[ -z "${SLURM_JOB_ID:-}" ]]; then
   python -m pip install --upgrade pip setuptools wheel
   python -m pip install -e '.[cloud,test]'
 
+  if [[ "${LIVE_EARTHDATA:-0}" == "1" ]]; then
+    python - <<'PY'
+import earthaccess
+
+auth = earthaccess.login(strategy="all")
+print("Authenticated:", auth.authenticated)
+
+granules = earthaccess.search_data(
+    short_name="SPL4SMGP",
+    temporal=("2022-07-01", "2022-07-02"),
+    count=1,
+    cloud_hosted=True,
+)
+print("Granules found:", len(granules))
+PY
+  fi
+
   export LIVE_EARTHDATA="${LIVE_EARTHDATA:-0}"
+  export ALLOW_COMPUTE_EARTHACCESS="${ALLOW_COMPUTE_EARTHACCESS:-0}"
   sbatch "$0"
   exit 0
 fi
@@ -74,9 +96,12 @@ print("s3fs:", s3fs.__version__)
 print("dask:", dask.__version__)
 PY
 
-pytest_args=(tests/test_earthaccess_stream_bdsnp_megan3.py -v)
-if [[ "${LIVE_EARTHDATA:-0}" == "1" ]]; then
+pytest_args=(python -m pytest tests/test_earthaccess_stream_bdsnp_megan3.py -v)
+if [[ "${ALLOW_COMPUTE_EARTHACCESS:-0}" == "1" && "${LIVE_EARTHDATA:-0}" == "1" ]]; then
   pytest_args+=(-m live_earthdata)
+else
+  unset EARTHDATA_USERNAME
+  unset EARTHDATA_TOKEN
 fi
 
-python -m pytest "${pytest_args[@]}"
+"${pytest_args[@]}"
