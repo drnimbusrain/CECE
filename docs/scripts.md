@@ -42,6 +42,8 @@ python scripts/stage_earthaccess_streams.py \
 export CECE_EARTHACCESS_STAGE_DIR=/scratch/$USER/cece_earthaccess_stage
 ```
 
+For `--auth-strategy netrc`, store the Earthdata username and account password in `~/.netrc` and run `unset EARTHDATA_TOKEN` before preflight. `EARTHDATA_TOKEN` is only for a current bearer token; an expired token causes CMR `401 Unauthorized: Token does not exist` responses.
+
 ### `ursa_earthaccess_staged_run.slurm`
 Example Ursa workflow that prepares the EarthAccess Python environment and stages remote streams on a login node, then submits a Slurm job that consumes the staged cache without network access from compute nodes.
 ```bash

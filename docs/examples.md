@@ -111,18 +111,26 @@ The recommended approach for local testing is `~/.netrc`:
 cat > ~/.netrc <<'EOF'
 machine urs.earthdata.nasa.gov
 	login YOUR_EARTHDATA_USERNAME
-	password YOUR_EARTHDATA_PASSWORD_OR_TOKEN
+	password YOUR_EARTHDATA_PASSWORD
 EOF
 
 chmod 600 ~/.netrc
 ```
 
-Alternatively, export credentials in the current shell:
+Alternatively, export a username/password pair in the current shell:
 
 ```bash
 export EARTHDATA_USERNAME='your-username'
-export EARTHDATA_TOKEN='your-token-or-password'
+export EARTHDATA_PASSWORD='your-password'
 ```
+
+Or export a current Earthdata bearer token by itself:
+
+```bash
+export EARTHDATA_TOKEN='your-current-earthdata-token'
+```
+
+Do not put an Earthdata token in the `.netrc` password field. When using `--auth-strategy netrc`, clear any stale token first with `unset EARTHDATA_TOKEN`. A CMR response containing `401 Unauthorized` and `Token does not exist` means the exported bearer token is invalid or expired; generate a new token or use the `.netrc` username/password strategy.
 
 Do not commit credentials, tokens, `.netrc` files, or shell history snippets containing secrets to the repository.
 
@@ -217,6 +225,8 @@ python scripts/stage_earthaccess_streams.py \
 	--check-download-access \
 	--auth-strategy netrc
 ```
+
+Before using the `netrc` strategy, run `unset EARTHDATA_TOKEN` so an expired bearer token cannot be reused by EarthAccess or inherited helper processes. The staging script also removes this variable automatically in `netrc` mode.
 
 `--check-download-access` downloads one sample granule per stream into a temporary directory. This verifies protected-file authorization in addition to CMR search results. If EarthAccess raises `EulaNotAccepted`, sign in at <https://urs.earthdata.nasa.gov/profile>, review the account's Authorized Apps and associated provider terms, accept the required EULA, then refresh the credentials used on Ursa and rerun preflight. CECE cannot accept legal terms on behalf of an Earthdata account.
 

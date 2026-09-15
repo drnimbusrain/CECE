@@ -144,6 +144,35 @@ def _effective_provider(stream: Dict[str, Any]) -> Any:
     return daac
 
 
+def _prepare_auth_environment(strategy: str) -> None:
+    if strategy == "netrc":
+        os.environ.pop("EARTHDATA_TOKEN", None)
+
+
+def _search_granules(
+    earthaccess: Any, stream: Dict[str, Any], provider: Any
+) -> List[Any]:
+    try:
+        return earthaccess.search_data(
+            short_name=stream["short_name"],
+            temporal=(stream["temporal_start"], stream["temporal_end"]),
+            bounding_box=stream.get("bounding_box"),
+            version=stream.get("version"),
+            cloud_hosted=stream.get("cloud_hosted", True),
+            provider=provider,
+            count=1,
+        )
+    except RuntimeError as exc:
+        if "Token does not exist" in str(exc):
+            raise RuntimeError(
+                "NASA CMR rejected a stale or invalid EARTHDATA_TOKEN. Unset "
+                "EARTHDATA_TOKEN and use --auth-strategy netrc with a ~/.netrc entry "
+                "whose password field contains the Earthdata account password, or export "
+                "a newly generated valid Earthdata token."
+            ) from exc
+        raise
+
+
 def _granule_data_links(granule: Any) -> List[str]:
     data_links = getattr(granule, "data_links", None)
     if callable(data_links):
@@ -190,18 +219,10 @@ def _preflight_streams(
     import earthaccess
     from earthaccess.exceptions import EulaNotAccepted
 
-    earthaccess.login(strategy=auth_strategy)
+    _prepare_auth_environment(auth_strategy)
     for stream in _earthaccess_streams(config):
         provider = _effective_provider(stream)
-        granules = earthaccess.search_data(
-            short_name=stream["short_name"],
-            temporal=(stream["temporal_start"], stream["temporal_end"]),
-            bounding_box=stream.get("bounding_box"),
-            version=stream.get("version"),
-            cloud_hosted=stream.get("cloud_hosted", True),
-            provider=provider,
-            count=1,
-        )
+        granules = _search_granules(earthaccess, stream, provider)
         if not granules:
             raise RuntimeError(
                 "No earthaccess granules found during preflight for stream "
@@ -215,6 +236,7 @@ def _preflight_streams(
         _raise_if_unsupported_granule_format(stream, granules)
         if check_download_access:
             try:
+                earthaccess.login(strategy=auth_strategy)
                 with tempfile.TemporaryDirectory(
                     prefix="cece-earthaccess-preflight-"
                 ) as temp_dir:
@@ -334,6 +356,8 @@ def main() -> int:
 
         helper_env = os.environ.copy()
         helper_env["CECE_EARTHACCESS_AUTH_STRATEGY"] = args.auth_strategy
+        if args.auth_strategy == "netrc":
+            helper_env.pop("EARTHDATA_TOKEN", None)
         try:
             subprocess.run(
                 [

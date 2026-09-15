@@ -783,6 +783,28 @@ class TestStandaloneEarthAccessIngestHelper:
         stream = {"cloud_hosted": False, "daac": "LPDAAC_ECS"}
         assert _standalone_ingest_mod._effective_provider(stream) == "LPDAAC_ECS"
 
+    def test_helper_netrc_strategy_removes_stale_token(self):
+        with patch.dict(os.environ, {"EARTHDATA_TOKEN": "stale-token"}):
+            _standalone_ingest_mod._prepare_auth_environment("netrc")
+            assert "EARTHDATA_TOKEN" not in os.environ
+
+    def test_helper_reports_stale_token_search_failure(self):
+        mock_ea = MagicMock()
+        mock_ea.search_data.side_effect = RuntimeError(
+            '{"errors":["Token does not exist"]}'
+        )
+
+        with pytest.raises(RuntimeError, match="Unset EARTHDATA_TOKEN"):
+            _standalone_ingest_mod._search_granules(
+                mock_ea,
+                {
+                    "short_name": "M2T1NXLND",
+                    "temporal_start": "2022-07-01",
+                    "temporal_end": "2022-07-04",
+                },
+                "GES_DISC",
+            )
+
     def test_helper_rejects_hdf_eos_granules_before_xarray_open(self):
         stream = {"name": "modis_lai"}
         granules = [

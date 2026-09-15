@@ -170,6 +170,37 @@ def _effective_provider(stream: dict) -> Any:
     return daac
 
 
+def _auth_strategy() -> str:
+    return os.getenv("CECE_EARTHACCESS_AUTH_STRATEGY", "all")
+
+
+def _prepare_auth_environment(strategy: str) -> None:
+    if strategy == "netrc":
+        os.environ.pop("EARTHDATA_TOKEN", None)
+
+
+def _search_granules(earthaccess: Any, stream: dict, provider: Any) -> List[Any]:
+    try:
+        return earthaccess.search_data(
+            short_name=stream["short_name"],
+            temporal=(stream["temporal_start"], stream["temporal_end"]),
+            bounding_box=stream.get("bounding_box"),
+            version=stream.get("version"),
+            cloud_hosted=stream.get("cloud_hosted", True),
+            provider=provider,
+            count=-1,
+        )
+    except RuntimeError as exc:
+        if "Token does not exist" in str(exc):
+            raise RuntimeError(
+                "NASA CMR rejected a stale or invalid EARTHDATA_TOKEN. Unset "
+                "EARTHDATA_TOKEN and use --auth-strategy netrc with a ~/.netrc entry "
+                "whose password field contains the Earthdata account password, or export "
+                "a newly generated valid Earthdata token."
+            ) from exc
+        raise
+
+
 def _granule_data_links(granule: Any) -> List[str]:
     data_links = getattr(granule, "data_links", None)
     if callable(data_links):
@@ -246,19 +277,10 @@ def _open_dataset(stream: dict, download_dir: Optional[Path] = None) -> Any:
     import earthaccess
     import xarray as xr
 
-    earthaccess.login(strategy=os.getenv("CECE_EARTHACCESS_AUTH_STRATEGY", "all"))
-
+    strategy = _auth_strategy()
+    _prepare_auth_environment(strategy)
     provider = _effective_provider(stream)
-
-    granules = earthaccess.search_data(
-        short_name=stream["short_name"],
-        temporal=(stream["temporal_start"], stream["temporal_end"]),
-        bounding_box=stream.get("bounding_box"),
-        version=stream.get("version"),
-        cloud_hosted=stream.get("cloud_hosted", True),
-        provider=provider,
-        count=-1,
-    )
+    granules = _search_granules(earthaccess, stream, provider)
     if not granules:
         raise RuntimeError(
             "No earthaccess granules found for stream "
@@ -277,6 +299,7 @@ def _open_dataset(stream: dict, download_dir: Optional[Path] = None) -> Any:
     if stream.get("cache_type") is not None:
         open_kwargs["cache_type"] = stream["cache_type"]
 
+    earthaccess.login(strategy=strategy)
     if download_dir is not None:
         local_paths = _download_granules(granules, download_dir, provider)
         return xr.open_mfdataset(local_paths, engine="h5netcdf", combine="by_coords")

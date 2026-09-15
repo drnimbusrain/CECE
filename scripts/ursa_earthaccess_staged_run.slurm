@@ -30,13 +30,22 @@ if [[ -z "${SLURM_JOB_ID:-}" ]]; then
   config_base="$(basename "${CECE_CONFIG}" .yaml)"
   export CECE_EARTHACCESS_STAGE_DIR="${CECE_EARTHACCESS_STAGE_DIR:-${PWD}/earthaccess_stage/${config_base}}"
   export CECE_EARTHACCESS_VENV="${CECE_EARTHACCESS_VENV:-${PWD}/.venv-ursa-earthaccess}"
+  export CECE_EARTHACCESS_AUTH_STRATEGY="${CECE_EARTHACCESS_AUTH_STRATEGY:-netrc}"
+
+  if [[ "${CECE_EARTHACCESS_AUTH_STRATEGY}" == "netrc" ]]; then
+    unset EARTHDATA_TOKEN
+  fi
 
   python -m venv "${CECE_EARTHACCESS_VENV}"
   source "${CECE_EARTHACCESS_VENV}/bin/activate"
   python -m pip install --upgrade pip setuptools wheel
   python -m pip install -e '.[cloud,test]'
 
-  stage_args=(--config "${CECE_CONFIG}" --stage-dir "${CECE_EARTHACCESS_STAGE_DIR}")
+  stage_args=(
+    --config "${CECE_CONFIG}"
+    --stage-dir "${CECE_EARTHACCESS_STAGE_DIR}"
+    --auth-strategy "${CECE_EARTHACCESS_AUTH_STRATEGY}"
+  )
   if [[ "${OVERWRITE_STAGE:-0}" == "1" ]]; then
     stage_args+=(--overwrite)
   fi
