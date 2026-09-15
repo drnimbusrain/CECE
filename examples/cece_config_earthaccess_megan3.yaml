@@ -41,8 +41,8 @@ driver:
 physics_schemes:
   - name: megan3
     options:
-      mechanism_file: /scratch3/NAGAPE/gpu-arl-gpu/Patrick.C.Campbell/CECE_dev/data/speciation/spc_cb6.yaml
-      speciation_file: /scratch3/NAGAPE/gpu-arl-gpu/Patrick.C.Campbell/CECE_dev/data/speciation/map_cb6.yaml
+      mechanism_file: ../data/speciation/spc_cb6.yaml
+      speciation_file: ../data/speciation/map_cb6.yaml
       speciation_dataset: MEGAN
       co2_concentration: 415.0
       co2_method: possell # "possell" or "wilkinson"
