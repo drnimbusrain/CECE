@@ -783,6 +783,25 @@ class TestStandaloneEarthAccessIngestHelper:
         transformed = _standalone_ingest_mod._apply_transform(values, "cos_degrees")
         assert np.allclose(transformed, [[1.0, 0.5, 0.0, 0.0]])
 
+    def test_helper_derives_solar_cosine_from_time_and_grid(self):
+        values = _standalone_ingest_mod._solar_cosine(
+            datetime(2022, 3, 20, 12, 0, 0),
+            np.array([0.0, 180.0]),
+            np.array([0.0]),
+        )
+
+        assert values.shape == (1, 2)
+        assert values[0, 0] > 0.99
+        assert values[0, 1] == 0.0
+
+    def test_helper_derived_solar_cosine_is_globally_bounded(self):
+        values = _standalone_ingest_mod._solar_cosine(
+            datetime(2022, 7, 1, 0, 0, 0), LON, LAT
+        )
+
+        assert values.shape == (NY, NX)
+        assert np.all((values >= 0.0) & (values <= 1.0))
+
     def test_helper_maps_lpdaac_cloud_provider(self):
         stream = {"cloud_hosted": True, "daac": "LPDAAC_ECS"}
         assert _standalone_ingest_mod._effective_provider(stream) == "LPCLOUD"

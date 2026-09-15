@@ -193,6 +193,18 @@ variables:
 
 Use `transform: cos_radians` for radian inputs. If `solar_cosine` is mapped without a transform, the bridge validates that the incoming values are already in `[0, 1]`.
 
+The staged MEGAN3 example obtains direct and diffuse PAR from the MERRA-2 land-surface-forcing collection `M2T1NXLFO`, using its `PARDR` and `PARDF` fields. Because that collection does not include solar zenith angle, the helper derives daylight-clipped `solar_cosine` from the UTC model time and target-grid coordinates:
+
+```yaml
+variables:
+	PARDR: par_direct
+	PARDF: par_diffuse
+derived_variables:
+	solar_cosine: solar_cosine
+```
+
+The older `M2T1NXRAD` collection contains broadband fields such as `SWGDN`, but it does not contain `PARDR`, `PARDF`, or `SZA` in the downloaded Version 5.12.4 files.
+
 If the live test fails to authenticate, confirm that `~/.netrc` is mode `600` and that `python -c 'import earthaccess; print(earthaccess.login(strategy="all").authenticated)'` returns `True` in the active environment.
 
 ### Staging EarthAccess Streams for Compute Nodes Without Network Access

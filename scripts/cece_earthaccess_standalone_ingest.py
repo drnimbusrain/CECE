@@ -74,6 +74,43 @@ def _apply_transform(values: np.ndarray, transform: Optional[str]) -> np.ndarray
     raise ValueError(f"Unsupported earthaccess variable transform: {transform}")
 
 
+def _solar_cosine(
+    timestamp: datetime, target_lons: np.ndarray, target_lats: np.ndarray
+) -> np.ndarray:
+    day_of_year = timestamp.timetuple().tm_yday
+    fractional_hour = (
+        timestamp.hour + timestamp.minute / 60.0 + timestamp.second / 3600.0
+    )
+    fractional_year = (
+        2.0 * np.pi / 365.0 * (day_of_year - 1 + (fractional_hour - 12.0) / 24.0)
+    )
+    equation_of_time = 229.18 * (
+        0.000075
+        + 0.001868 * np.cos(fractional_year)
+        - 0.032077 * np.sin(fractional_year)
+        - 0.014615 * np.cos(2.0 * fractional_year)
+        - 0.040849 * np.sin(2.0 * fractional_year)
+    )
+    declination = (
+        0.006918
+        - 0.399912 * np.cos(fractional_year)
+        + 0.070257 * np.sin(fractional_year)
+        - 0.006758 * np.cos(2.0 * fractional_year)
+        + 0.000907 * np.sin(2.0 * fractional_year)
+        - 0.002697 * np.cos(3.0 * fractional_year)
+        + 0.00148 * np.sin(3.0 * fractional_year)
+    )
+
+    solar_minutes = fractional_hour * 60.0 + equation_of_time + 4.0 * target_lons
+    hour_angle = np.deg2rad(solar_minutes / 4.0 - 180.0)
+    latitude = np.deg2rad(target_lats)[:, np.newaxis]
+    cosine = (
+        np.sin(latitude) * np.sin(declination)
+        + np.cos(latitude) * np.cos(declination) * np.cos(hour_angle)[np.newaxis, :]
+    )
+    return np.clip(cosine, 0.0, 1.0)
+
+
 def _validate_field(field_name: str, values: np.ndarray) -> None:
     if not np.all(np.isfinite(values)):
         raise ValueError(f"earthaccess field {field_name!r} contains non-finite values")
@@ -161,6 +198,17 @@ def _interp_to_target(
 
 def _safe_name(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "_", name)
+
+
+def _write_field(
+    output_dir: Path, field_name: str, values: np.ndarray, nx: int, ny: int
+) -> str:
+    values = np.asarray(values, dtype=np.float64)
+    _validate_field(field_name, values)
+    flat = np.ascontiguousarray(values.reshape(-1))
+    binary_path = output_dir / f"{_safe_name(field_name)}.f64"
+    flat.tofile(binary_path)
+    return f"{field_name} {nx} {ny} 1 {binary_path.name} {float(np.min(flat)):.17g} {float(np.max(flat)):.17g}"
 
 
 def _effective_provider(stream: dict) -> Any:
@@ -354,9 +402,10 @@ def main() -> int:
 
     target_lons = _load_coords(args.lon_file)
     target_lats = _load_coords(args.lat_file)
-    timestamp = np.datetime64(
-        datetime.fromisoformat(args.time.replace("Z", "+00:00")).replace(tzinfo=None)
-    )
+    timestamp_datetime = datetime.fromisoformat(
+        args.time.replace("Z", "+00:00")
+    ).replace(tzinfo=None)
+    timestamp = np.datetime64(timestamp_datetime)
 
     manifest_lines = []
     for stream in streams:
@@ -376,14 +425,30 @@ def main() -> int:
                 selected = _select_time(dataset[nasa_var], timestamp)
                 values = _interp_to_target(selected, target_lons, target_lats)
                 values = _apply_transform(values, transform)
-                values = np.asarray(values, dtype=np.float64)
-                _validate_field(field_name, values)
-
-                flat = np.ascontiguousarray(values.reshape(-1))
-                binary_path = args.output_dir / f"{_safe_name(field_name)}.f64"
-                flat.tofile(binary_path)
                 manifest_lines.append(
-                    f"{field_name} {target_lons.size} {target_lats.size} 1 {binary_path.name} {float(np.min(flat)):.17g} {float(np.max(flat)):.17g}"
+                    _write_field(
+                        args.output_dir,
+                        field_name,
+                        values,
+                        target_lons.size,
+                        target_lats.size,
+                    )
+                )
+
+            for field_name, method in (stream.get("derived_variables") or {}).items():
+                if method != "solar_cosine":
+                    raise ValueError(
+                        f"Unsupported earthaccess derived variable method: {method}"
+                    )
+                values = _solar_cosine(timestamp_datetime, target_lons, target_lats)
+                manifest_lines.append(
+                    _write_field(
+                        args.output_dir,
+                        field_name,
+                        values,
+                        target_lons.size,
+                        target_lats.size,
+                    )
                 )
         finally:
             dataset.close()
