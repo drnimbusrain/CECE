@@ -121,6 +121,14 @@ _standalone_ingest_mod = _ilu.module_from_spec(_standalone_spec)
 sys.modules["cece_earthaccess_standalone_ingest"] = _standalone_ingest_mod
 _standalone_spec.loader.exec_module(_standalone_ingest_mod)
 
+_stage_spec = _ilu.spec_from_file_location(
+    "stage_earthaccess_streams",
+    str(_REPO_ROOT / "scripts" / "stage_earthaccess_streams.py"),
+)
+_stage_mod = _ilu.module_from_spec(_stage_spec)
+sys.modules["stage_earthaccess_streams"] = _stage_mod
+_stage_spec.loader.exec_module(_stage_mod)
+
 # config.py uses `from .earthaccess_resolver import ...`; inject the already-
 # loaded module so the relative import resolves correctly when config is loaded.
 sys.modules["earthaccess_resolver"] = _ea_resolver_mod
@@ -877,6 +885,53 @@ class TestStandaloneEarthAccessIngestHelper:
                 _standalone_ingest_mod._download_granules(
                     [MagicMock()], tmp_path / "granules", "GES_DISC"
                 )
+
+    def test_stage_preflight_validates_downloaded_variables(self):
+        dataset = MagicMock()
+        dataset.variables = {
+            "PARDR": MagicMock(),
+            "PARDF": MagicMock(),
+            "SZA": MagicMock(),
+        }
+        mock_xr = MagicMock()
+        mock_xr.open_mfdataset.return_value = dataset
+
+        with patch.dict(sys.modules, {"xarray": mock_xr}):
+            _stage_mod._validate_downloaded_variables(
+                {
+                    "name": "merra2_par",
+                    "variables": {
+                        "PARDR": "par_direct",
+                        "PARDF": "par_diffuse",
+                        "SZA": "solar_cosine",
+                    },
+                },
+                ["sample.nc4"],
+            )
+
+        dataset.close.assert_called_once()
+
+    def test_stage_preflight_reports_missing_downloaded_variables(self):
+        dataset = MagicMock()
+        dataset.variables = {"PARDR": MagicMock(), "time": MagicMock()}
+        mock_xr = MagicMock()
+        mock_xr.open_mfdataset.return_value = dataset
+
+        with patch.dict(sys.modules, {"xarray": mock_xr}):
+            with pytest.raises(RuntimeError, match="PARDF.*SZA.*Available variables"):
+                _stage_mod._validate_downloaded_variables(
+                    {
+                        "name": "merra2_par",
+                        "variables": {
+                            "PARDR": "par_direct",
+                            "PARDF": "par_diffuse",
+                            "SZA": "solar_cosine",
+                        },
+                    },
+                    ["sample.nc4"],
+                )
+
+        dataset.close.assert_called_once()
 
     def test_helper_interpolates_to_target_grid(self):
         ds = xr.Dataset(

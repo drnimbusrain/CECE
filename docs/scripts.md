@@ -44,7 +44,7 @@ export CECE_EARTHACCESS_STAGE_DIR=/scratch/$USER/cece_earthaccess_stage
 
 For `--auth-strategy netrc`, store the Earthdata username and account password in `~/.netrc` and run `unset EARTHDATA_TOKEN` before preflight. `EARTHDATA_TOKEN` is only for a current bearer token; an expired token causes CMR `401 Unauthorized: Token does not exist` responses.
 
-An `EulaNotAccepted` failure includes a protected data URL. Open that URL in a browser while signed in with the same account as `~/.netrc`, authorize the GES DISC application, accept any displayed terms, and verify the application under Authorized Apps at <https://urs.earthdata.nasa.gov/profile> before rerunning preflight.
+With `--check-download-access`, preflight also opens each downloaded sample and verifies that its configured variable names exist. An `EulaNotAccepted` failure includes a protected data URL. Open that URL in a browser while signed in with the same account as `~/.netrc`, authorize the GES DISC application, accept any displayed terms, and verify the application under Authorized Apps at <https://urs.earthdata.nasa.gov/profile> before rerunning preflight.
 
 ### `ursa_earthaccess_staged_run.slurm`
 Example Ursa workflow that prepares the EarthAccess Python environment and stages remote streams on a login node, then submits a Slurm job that consumes the staged cache without network access from compute nodes.

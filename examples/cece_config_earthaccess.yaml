@@ -129,20 +129,21 @@ cece_data:
         soil_temp_layer1: soil_temperature
 
     # ------------------------------------------------------------------
-    # Photosynthetically active radiation — CERES SYN1deg (GES DISC)
+    # Photosynthetically active radiation — MERRA-2 radiation diagnostics
     # Provides: par_direct, par_diffuse, solar_cosine (MEGAN3 inputs)
     # ------------------------------------------------------------------
-    - name: ceres_par
+    - name: merra2_par
       source: earthaccess
-      short_name: CER_SYN1deg-Day_Terra-Aqua-MODIS_Edition4A
-      daac: LARC_ASDC
+      short_name: M2T1NXRAD
+      version: "5.12.4"
+      daac: GES_DISC
       cloud_hosted: true
       temporal_start: "2022-07-01"
       temporal_end: "2022-07-04"
       variables:
-        sfc_sw_down_dir_all_1h: par_direct
-        sfc_sw_down_dif_all_1h: par_diffuse
-        solar_zenith_angle:
+        PARDR: par_direct
+        PARDF: par_diffuse
+        SZA:
           model: solar_cosine
           transform: cos_degrees
 

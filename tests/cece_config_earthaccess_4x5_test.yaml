@@ -70,16 +70,19 @@ cece_data:
         sm_surface: soil_moisture
 
     # ------------------------------------------------------------------
-    # CERES SYN1deg — direct/diffuse PAR and solar cosine (MEGAN3)
+    # MERRA-2 radiation diagnostics — direct/diffuse PAR and solar cosine
     # ------------------------------------------------------------------
-    - name: ceres_par
+    - name: merra2_par
       source: earthaccess
-      short_name: CER_SYN1deg-Day_Terra-Aqua-MODIS_Edition4A
-      daac: LARC_ASDC
+      short_name: M2T1NXRAD
+      version: "5.12.4"
+      daac: GES_DISC
       cloud_hosted: true
       temporal_start: "2022-07-01"
       temporal_end: "2022-07-02"
       variables:
-        sfc_sw_down_dir_all_1h: par_direct
-        sfc_sw_down_dif_all_1h: par_diffuse
-        solar_zenith_angle: solar_cosine
+        PARDR: par_direct
+        PARDF: par_diffuse
+        SZA:
+          model: solar_cosine
+          transform: cos_degrees

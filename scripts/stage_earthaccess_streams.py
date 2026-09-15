@@ -213,6 +213,24 @@ def _raise_if_unsupported_granule_format(
     )
 
 
+def _validate_downloaded_variables(stream: Dict[str, Any], paths: List[Any]) -> None:
+    import xarray as xr
+
+    dataset = xr.open_mfdataset(paths, engine="h5netcdf", combine="by_coords")
+    try:
+        configured = set((stream.get("variables") or {}).keys())
+        missing = sorted(configured.difference(dataset.variables))
+        if missing:
+            available = sorted(str(name) for name in dataset.variables)
+            raise RuntimeError(
+                "Downloaded EarthAccess sample is missing configured variables for stream "
+                f"{stream.get('name', '<unnamed>')!r}: {missing}. "
+                f"Available variables: {available}"
+            )
+    finally:
+        dataset.close()
+
+
 def _preflight_streams(
     config: Dict[str, Any], auth_strategy: str, check_download_access: bool
 ) -> None:
@@ -249,6 +267,7 @@ def _preflight_streams(
                     )
                     if not paths:
                         raise RuntimeError("EarthAccess returned no downloaded files")
+                    _validate_downloaded_variables(stream, paths)
             except EulaNotAccepted as exc:
                 protected_url = _first_data_link(granules)
                 raise RuntimeError(
