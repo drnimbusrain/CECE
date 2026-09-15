@@ -1,0 +1,204 @@
+#!/usr/bin/env python3
+"""Stage CECE EarthAccess stream inputs for offline compute-node runs.
+
+Run this script on a login or data-transfer node with outbound network access.
+It writes the same ``step_N/manifest.txt`` plus raw ``*.f64`` files that the
+native CECE driver consumes at runtime when ``CECE_EARTHACCESS_STAGE_DIR`` is
+set in the compute job.
+"""
+
+from __future__ import annotations
+
+import argparse
+import shutil
+import subprocess
+import sys
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any, Dict, Iterable, Iterator, List, Tuple
+
+import numpy as np
+import yaml
+
+
+def _parse_datetime(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00")).replace(tzinfo=None)
+
+
+def _iter_step_times(
+    start_time: datetime, end_time: datetime, timestep_seconds: int
+) -> Iterator[Tuple[int, datetime]]:
+    if timestep_seconds <= 0:
+        raise ValueError("driver.timestep_seconds must be positive")
+    step_time = start_time
+    step_index = 0
+    delta = timedelta(seconds=timestep_seconds)
+    while step_time < end_time:
+        yield step_index, step_time
+        step_index += 1
+        step_time += delta
+
+
+def _require_mapping(config: Any) -> Dict[str, Any]:
+    if not isinstance(config, dict):
+        raise ValueError("CECE config must be a YAML mapping")
+    return config
+
+
+def _grid_coordinates(config: Dict[str, Any]) -> Tuple[np.ndarray, np.ndarray]:
+    driver = config.get("driver") or {}
+    grid = driver.get("grid") or {}
+    if not isinstance(grid, dict):
+        raise ValueError("driver.grid must be a YAML mapping")
+
+    grid_name = str(grid.get("grid_name") or "")
+    if grid_name == "HEMCO_4x5":
+        return (
+            np.linspace(-177.5, 177.5, 72, dtype=np.float64),
+            np.concatenate([[-89.0], np.linspace(-86.0, 86.0, 44), [89.0]]).astype(
+                np.float64
+            ),
+        )
+
+    grid_number = None
+    if len(grid_name) > 1 and grid_name[0] in {"F", "R"} and grid_name[1:].isdigit():
+        grid_number = int(grid_name[1:])
+
+    nx = int(grid.get("nx") or (4 * grid_number if grid_number is not None else 0))
+    ny = int(grid.get("ny") or (2 * grid_number if grid_number is not None else 0))
+    if nx <= 0 or ny <= 0:
+        raise ValueError(
+            "driver.grid must define positive nx/ny or a supported grid_name"
+        )
+
+    lon_min = float(grid.get("lon_min", -180.0))
+    lon_max = float(grid.get("lon_max", 180.0))
+    lat_min = float(grid.get("lat_min", -90.0))
+    lat_max = float(grid.get("lat_max", 90.0))
+    longitudes = lon_min + ((lon_max - lon_min) / nx) * (
+        np.arange(nx, dtype=np.float64) + 0.5
+    )
+    latitudes = lat_min + ((lat_max - lat_min) / ny) * (
+        np.arange(ny, dtype=np.float64) + 0.5
+    )
+    return longitudes, latitudes
+
+
+def _write_vector(path: Path, values: Iterable[float]) -> None:
+    path.write_text("".join(f"{value:.17g}\n" for value in values))
+
+
+def _resolve_helper(config_path: Path, config: Dict[str, Any], repo_root: Path) -> Path:
+    driver = config.get("driver") or {}
+    helper_value = driver.get("earthaccess_helper")
+    if helper_value:
+        helper_path = Path(str(helper_value))
+        if not helper_path.is_absolute():
+            helper_path = config_path.parent / helper_path
+        return helper_path.resolve()
+    return repo_root / "scripts" / "cece_earthaccess_standalone_ingest.py"
+
+
+def _load_config(path: Path) -> Dict[str, Any]:
+    return _require_mapping(yaml.safe_load(path.read_text()))
+
+
+def _copy_stage_metadata(stage_dir: Path, config_path: Path, step_count: int) -> None:
+    metadata = {
+        "config": str(config_path),
+        "step_count": step_count,
+        "usage": "Set CECE_EARTHACCESS_STAGE_DIR to this directory in the compute job.",
+    }
+    (stage_dir / "metadata.yaml").write_text(yaml.safe_dump(metadata, sort_keys=True))
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--config",
+        required=True,
+        type=Path,
+        help="CECE YAML config with source: earthaccess streams",
+    )
+    parser.add_argument(
+        "--stage-dir",
+        required=True,
+        type=Path,
+        help="Output directory visible to compute nodes",
+    )
+    parser.add_argument("--start-time", help="Override driver.start_time")
+    parser.add_argument("--end-time", help="Override driver.end_time")
+    parser.add_argument(
+        "--timestep-seconds", type=int, help="Override driver.timestep_seconds"
+    )
+    parser.add_argument(
+        "--max-steps", type=int, help="Only stage the first N model steps"
+    )
+    parser.add_argument(
+        "--overwrite", action="store_true", help="Replace existing step_N directories"
+    )
+    args = parser.parse_args()
+
+    repo_root = Path(__file__).resolve().parents[1]
+    config_path = args.config.resolve()
+    stage_dir = args.stage_dir.resolve()
+    config = _load_config(config_path)
+    driver = config.get("driver") or {}
+
+    start_time = _parse_datetime(args.start_time or str(driver["start_time"]))
+    end_time = _parse_datetime(args.end_time or str(driver["end_time"]))
+    timestep_seconds = args.timestep_seconds or int(driver["timestep_seconds"])
+    target_lons, target_lats = _grid_coordinates(config)
+    helper_path = _resolve_helper(config_path, config, repo_root)
+    if not helper_path.exists():
+        raise FileNotFoundError(f"EarthAccess helper not found: {helper_path}")
+
+    stage_dir.mkdir(parents=True, exist_ok=True)
+    staged_steps: List[int] = []
+    for step_index, step_time in _iter_step_times(
+        start_time, end_time, timestep_seconds
+    ):
+        if args.max_steps is not None and len(staged_steps) >= args.max_steps:
+            break
+
+        step_dir = stage_dir / f"step_{step_index}"
+        if step_dir.exists():
+            if not args.overwrite:
+                raise FileExistsError(
+                    f"Refusing to overwrite existing stage directory: {step_dir}"
+                )
+            shutil.rmtree(step_dir)
+        step_dir.mkdir(parents=True)
+
+        lon_file = step_dir / "target_lons.txt"
+        lat_file = step_dir / "target_lats.txt"
+        _write_vector(lon_file, target_lons)
+        _write_vector(lat_file, target_lats)
+
+        subprocess.run(
+            [
+                sys.executable,
+                str(helper_path),
+                "--config",
+                str(config_path),
+                "--time",
+                step_time.isoformat(),
+                "--output-dir",
+                str(step_dir),
+                "--lon-file",
+                str(lon_file),
+                "--lat-file",
+                str(lat_file),
+            ],
+            check=True,
+        )
+        staged_steps.append(step_index)
+
+    _copy_stage_metadata(stage_dir, config_path, len(staged_steps))
+    print(f"Staged {len(staged_steps)} EarthAccess step(s) in {stage_dir}")
+    print(f"Compute jobs should export CECE_EARTHACCESS_STAGE_DIR={stage_dir}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

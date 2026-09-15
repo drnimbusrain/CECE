@@ -1198,7 +1198,10 @@ bool CeceDriverOrchestrator::IngestEarthAccessStreams(const std::string& time_is
         MPI_Comm_rank(comm_c_, &rank);
     }
 
-    const fs::path work_dir = fs::absolute(fs::path(".cece_earthaccess_cache") / ("step_" + std::to_string(step_index_)));
+    const char* staged_dir_env = std::getenv("CECE_EARTHACCESS_STAGE_DIR");
+    const bool use_staged_earthaccess = staged_dir_env != nullptr && *staged_dir_env != '\0';
+    const fs::path work_dir = fs::absolute((use_staged_earthaccess ? fs::path(staged_dir_env) : fs::path(".cece_earthaccess_cache")) /
+                                           ("step_" + std::to_string(step_index_)));
     const fs::path lon_file = work_dir / "target_lons.txt";
     const fs::path lat_file = work_dir / "target_lats.txt";
     const fs::path manifest_file = work_dir / "manifest.txt";
@@ -1206,15 +1209,24 @@ bool CeceDriverOrchestrator::IngestEarthAccessStreams(const std::string& time_is
     int helper_status = 0;
     if (rank == 0) {
         std::error_code ec;
-        fs::remove_all(work_dir, ec);
-        fs::create_directories(work_dir, ec);
+        if (use_staged_earthaccess) {
+            if (!fs::exists(manifest_file)) {
+                CECE_LOG_ERROR("[DRIVER] Pre-staged earthaccess manifest not found: " + manifest_file.string());
+                helper_status = 1;
+            } else {
+                CECE_LOG_INFO("[DRIVER] Using pre-staged earthaccess streams from " + work_dir.string());
+            }
+        } else {
+            fs::remove_all(work_dir, ec);
+            fs::create_directories(work_dir, ec);
+        }
         if (ec) {
             CECE_LOG_ERROR("[DRIVER] Failed to create earthaccess work directory '" + work_dir.string() + "': " + ec.message());
             helper_status = 1;
-        } else if (!write_vector_file(lon_file, target_lons_) || !write_vector_file(lat_file, target_lats_)) {
+        } else if (!use_staged_earthaccess && (!write_vector_file(lon_file, target_lons_) || !write_vector_file(lat_file, target_lats_))) {
             CECE_LOG_ERROR("[DRIVER] Failed to write earthaccess target grid coordinate files in '" + work_dir.string() + "'");
             helper_status = 1;
-        } else {
+        } else if (!use_staged_earthaccess) {
             const char* python_env = std::getenv("CECE_PYTHON");
             const std::string python = (python_env && *python_env != '\0') ? python_env : "python3";
             const fs::path helper = resolve_earthaccess_helper(config_file_);

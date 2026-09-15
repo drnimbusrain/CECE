@@ -185,6 +185,45 @@ Use `transform: cos_radians` for radian inputs. If `solar_cosine` is mapped with
 
 If the live test fails to authenticate, confirm that `~/.netrc` is mode `600` and that `python -c 'import earthaccess; print(earthaccess.login(strategy="all").authenticated)'` returns `True` in the active environment.
 
+### Staging EarthAccess Streams for Compute Nodes Without Network Access
+
+Some HPC systems, including current NOAA RDHPC Ursa compute nodes, allow Python package installation and Earthdata queries from login or data-transfer nodes but block outbound HTTPS from compute nodes. In that environment, install the cloud extras and fetch EarthAccess streams before the Slurm compute job starts, then run CECE against the staged cache.
+
+Stage the EarthAccess streams on a login node:
+
+```bash
+cd /path/to/CECE
+module use ./modulefiles
+module load cece_ursa.intel
+
+python -m venv .venv-ursa-earthaccess
+source .venv-ursa-earthaccess/bin/activate
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install -e '.[cloud,test]'
+
+python scripts/stage_earthaccess_streams.py \
+	--config examples/cece_config_earthaccess_megan3.yaml \
+	--stage-dir /scratch/$USER/cece_earthaccess_stage \
+	--overwrite
+```
+
+Run CECE on compute nodes with remote fetching disabled and the staged cache enabled:
+
+```bash
+export CECE_EARTHACCESS_STAGE_DIR=/scratch/$USER/cece_earthaccess_stage
+unset EARTHDATA_USERNAME
+unset EARTHDATA_TOKEN
+srun -n 1 ./build-ursa-earthaccess/cece_standalone_driver examples/cece_config_earthaccess_megan3.yaml
+```
+
+The staged directory contains one subdirectory per model timestep, named `step_0`, `step_1`, and so on. Each step directory contains `manifest.txt` and raw `*.f64` field arrays. When `CECE_EARTHACCESS_STAGE_DIR` is set, the native driver reads those files directly and does not invoke the EarthAccess helper or open network connections.
+
+For a complete Ursa example that combines login-node staging with a compute-node Slurm run, use:
+
+```bash
+bash scripts/ursa_earthaccess_staged_run.slurm
+```
+
 ## Setting Up Examples
 
 To run these examples, you need the associated NetCDF data files. CECE provides a script to automate the setup process.
