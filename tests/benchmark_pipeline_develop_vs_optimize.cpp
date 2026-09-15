@@ -30,9 +30,8 @@
 //   ./setup.sh -c "/work/build/benchmark_pipeline_develop_vs_optimize"
 
 #include <Kokkos_Core.hpp>
-#include <axis/axis.hpp>
-
 #include <algorithm>
+#include <axis/axis.hpp>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>

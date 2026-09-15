@@ -9,8 +9,8 @@
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
-#include <functional>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
@@ -90,7 +90,8 @@ static axis::topology::UnstructuredMesh<Kokkos::HostSpace> load_mesh_from_file(i
     amio_view_handle edges_on_cell_view = nullptr;
     amio_view_handle vertices_on_cell_view = nullptr;
 
-    const fs::path manifest_path = fs::absolute(fs::path("amio_gridspec_manifest_" + std::to_string(std::hash<std::string>{}(gridspec_file)) + ".yaml"));
+    const fs::path manifest_path =
+        fs::absolute(fs::path("amio_gridspec_manifest_" + std::to_string(std::hash<std::string>{}(gridspec_file)) + ".yaml"));
     {
         std::ofstream manifest_file(manifest_path);
         if (!manifest_file) {
@@ -367,8 +368,8 @@ axis::topology::UnstructuredMesh<Kokkos::HostSpace> build_axis_mesh(int ni, int 
     return grid.to_unstructured();
 }
 
-axis::topology::UnstructuredMesh<Kokkos::HostSpace> extract_band_mesh(axis::topology::UnstructuredMesh<Kokkos::HostSpace> global_mesh, int nx,
-                                                                       int j0, int j1) {
+axis::topology::UnstructuredMesh<Kokkos::HostSpace> extract_band_mesh(axis::topology::UnstructuredMesh<Kokkos::HostSpace> global_mesh, int nx, int j0,
+                                                                      int j1) {
     const int nband = j1 - j0;
     const size_t n_cells = static_cast<size_t>(nx) * nband;
     auto global_node_coords = global_mesh.node_coords();

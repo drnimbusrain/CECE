@@ -732,8 +732,17 @@ class TestStandaloneEarthAccessIngestHelper:
 
     def test_helper_interpolates_to_target_grid(self):
         ds = xr.Dataset(
-            {"temperature": (["time", "lat", "lon"], np.array([[[280.0, 281.0], [290.0, 291.0]]]))},
-            coords={"time": TIME_COORD[:1], "lat": np.array([-45.0, 45.0]), "lon": np.array([-90.0, 90.0])},
+            {
+                "temperature": (
+                    ["time", "lat", "lon"],
+                    np.array([[[280.0, 281.0], [290.0, 291.0]]]),
+                )
+            },
+            coords={
+                "time": TIME_COORD[:1],
+                "lat": np.array([-45.0, 45.0]),
+                "lon": np.array([-90.0, 90.0]),
+            },
         )
         selected = _standalone_ingest_mod._select_time(
             ds["temperature"], np.datetime64("2022-07-01T00:00:00")

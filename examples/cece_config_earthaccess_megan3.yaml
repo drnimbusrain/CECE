@@ -60,7 +60,7 @@ physics_schemes:
           amat: 1.0
           aold: 0.9
           default_aef: 1.0e-9
-        
+
 cece_data:
   streams:
     # ------------------------------------------------------------------
@@ -156,7 +156,7 @@ cece_data:
 output:
   enabled: true
   directory: "./output/earthaccess_megan3"
-  filename_pattern: "cece_earthaccess_{YYYY}{MM}{DD}_{HH}{mm}{ss}.nc"          
+  filename_pattern: "cece_earthaccess_{YYYY}{MM}{DD}_{HH}{mm}{ss}.nc"
   fields:
     - name: MEGAN_ISOP
       attributes:

@@ -459,7 +459,6 @@ int main(int argc, char** argv) {
                       << " speedup(optimize/optimize3)=" << (opt3_ms > 0.0 ? opt_ms / opt3_ms : 0.0) << "\n"
                       << std::flush;
         }
-
     }
 
     if (Kokkos::is_initialized()) Kokkos::finalize();

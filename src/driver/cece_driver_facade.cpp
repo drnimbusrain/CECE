@@ -10,8 +10,8 @@
 #include <cstdlib>
 #include <dagr/logging.hpp>
 #include <filesystem>
-#include <functional>
 #include <fstream>
+#include <functional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -650,13 +650,13 @@ AmioHandleSet* CeceDriverOrchestrator::GetOrOpenHandleSet(const std::string& han
 
         amio_status_t amio_rc = amio_init(manifest_path.string().c_str(), &read_core);
         if (amio_rc != AMIO_OK) {
-            failure_detail = std::string("amio_init failed for handle '") + handle_key + "': rc=" + std::to_string(amio_rc) + " (" +
-                             amio_strerror(amio_rc) + ")";
+            failure_detail =
+                std::string("amio_init failed for handle '") + handle_key + "': rc=" + std::to_string(amio_rc) + " (" + amio_strerror(amio_rc) + ")";
         } else {
             amio_rc = amio_open_dataset(read_core, manifest_path.string().c_str(), AMIO_MODE_READ, &read_dataset);
             if (amio_rc != AMIO_OK) {
-                failure_detail = std::string("amio_open_dataset failed for '") + cfg.input_file_path +
-                                 "': rc=" + std::to_string(amio_rc) + " (" + amio_strerror(amio_rc) + ")";
+                failure_detail = std::string("amio_open_dataset failed for '") + cfg.input_file_path + "': rc=" + std::to_string(amio_rc) + " (" +
+                                 amio_strerror(amio_rc) + ")";
             }
         }
 
@@ -1236,9 +1236,8 @@ bool CeceDriverOrchestrator::IngestEarthAccessStreams(const std::string& time_is
     double max_value = 0.0;
     while (manifest >> field_name >> field_nx >> field_ny >> field_nz >> binary_name >> min_value >> max_value) {
         if (field_nx != nx_ || field_ny != ny_ || field_nz != 1) {
-            CECE_LOG_ERROR("[DRIVER] Earthaccess field '" + field_name + "' has shape " + std::to_string(field_nx) + "x" +
-                           std::to_string(field_ny) + "x" + std::to_string(field_nz) + ", expected " + std::to_string(nx_) + "x" +
-                           std::to_string(ny_) + "x1");
+            CECE_LOG_ERROR("[DRIVER] Earthaccess field '" + field_name + "' has shape " + std::to_string(field_nx) + "x" + std::to_string(field_ny) +
+                           "x" + std::to_string(field_nz) + ", expected " + std::to_string(nx_) + "x" + std::to_string(ny_) + "x1");
             return false;
         }
 
