@@ -894,7 +894,7 @@ class TestStandaloneEarthAccessIngestHelper:
             "SZA": MagicMock(),
         }
         mock_xr = MagicMock()
-        mock_xr.open_mfdataset.return_value = dataset
+        mock_xr.open_dataset.return_value.__enter__.return_value = dataset
 
         with patch.dict(sys.modules, {"xarray": mock_xr}):
             _stage_mod._validate_downloaded_variables(
@@ -909,13 +909,14 @@ class TestStandaloneEarthAccessIngestHelper:
                 ["sample.nc4"],
             )
 
-        dataset.close.assert_called_once()
+        mock_xr.open_dataset.assert_called_once_with("sample.nc4", engine="h5netcdf")
+        mock_xr.open_dataset.return_value.__exit__.assert_called_once()
 
     def test_stage_preflight_reports_missing_downloaded_variables(self):
         dataset = MagicMock()
         dataset.variables = {"PARDR": MagicMock(), "time": MagicMock()}
         mock_xr = MagicMock()
-        mock_xr.open_mfdataset.return_value = dataset
+        mock_xr.open_dataset.return_value.__enter__.return_value = dataset
 
         with patch.dict(sys.modules, {"xarray": mock_xr}):
             with pytest.raises(RuntimeError, match="PARDF.*SZA.*Available variables"):
@@ -931,7 +932,7 @@ class TestStandaloneEarthAccessIngestHelper:
                     ["sample.nc4"],
                 )
 
-        dataset.close.assert_called_once()
+                mock_xr.open_dataset.return_value.__exit__.assert_called_once()
 
     def test_helper_interpolates_to_target_grid(self):
         ds = xr.Dataset(

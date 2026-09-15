@@ -216,8 +216,12 @@ def _raise_if_unsupported_granule_format(
 def _validate_downloaded_variables(stream: Dict[str, Any], paths: List[Any]) -> None:
     import xarray as xr
 
-    dataset = xr.open_mfdataset(paths, engine="h5netcdf", combine="by_coords")
-    try:
+    if not paths:
+        raise RuntimeError(
+            "EarthAccess returned no downloaded files for schema validation"
+        )
+
+    with xr.open_dataset(paths[0], engine="h5netcdf") as dataset:
         configured = set((stream.get("variables") or {}).keys())
         missing = sorted(configured.difference(dataset.variables))
         if missing:
@@ -227,8 +231,6 @@ def _validate_downloaded_variables(stream: Dict[str, Any], paths: List[Any]) -> 
                 f"{stream.get('name', '<unnamed>')!r}: {missing}. "
                 f"Available variables: {available}"
             )
-    finally:
-        dataset.close()
 
 
 def _preflight_streams(
