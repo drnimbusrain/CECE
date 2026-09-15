@@ -783,6 +783,29 @@ class TestStandaloneEarthAccessIngestHelper:
         transformed = _standalone_ingest_mod._apply_transform(values, "cos_degrees")
         assert np.allclose(transformed, [[1.0, 0.5, 0.0, 0.0]])
 
+    def test_helper_applies_explicit_fill_value(self):
+        values = np.array([[1.0, np.nan], [np.inf, 2.0]], dtype=np.float64)
+        filled = _standalone_ingest_mod._apply_fill_value(
+            values, 0.0, "leaf_area_index"
+        )
+
+        assert np.array_equal(filled, [[1.0, 0.0], [0.0, 2.0]])
+
+    def test_helper_without_fill_value_remains_strict(self):
+        values = np.array([[1.0, np.nan]], dtype=np.float64)
+        unchanged = _standalone_ingest_mod._apply_fill_value(
+            values, None, "temperature"
+        )
+
+        with pytest.raises(ValueError, match="non-finite"):
+            _standalone_ingest_mod._validate_field("temperature", unchanged)
+
+    def test_helper_rejects_non_finite_fill_value(self):
+        with pytest.raises(ValueError, match="fill_value must be finite"):
+            _standalone_ingest_mod._mapping_fill_value(
+                {"model": "leaf_area_index", "fill_value": float("nan")}
+            )
+
     def test_helper_derives_solar_cosine_from_time_and_grid(self):
         values = _standalone_ingest_mod._solar_cosine(
             datetime(2022, 3, 20, 12, 0, 0),

@@ -64,6 +64,15 @@ def _mapping_target_and_transform(mapping: Any) -> Tuple[str, Optional[str]]:
     raise TypeError("earthaccess variable mapping must be a string or mapping dict")
 
 
+def _mapping_fill_value(mapping: Any) -> Optional[float]:
+    if not isinstance(mapping, dict) or mapping.get("fill_value") is None:
+        return None
+    fill_value = float(mapping["fill_value"])
+    if not np.isfinite(fill_value):
+        raise ValueError("earthaccess variable fill_value must be finite")
+    return fill_value
+
+
 def _apply_transform(values: np.ndarray, transform: Optional[str]) -> np.ndarray:
     if transform is None or transform == "none":
         return values
@@ -72,6 +81,17 @@ def _apply_transform(values: np.ndarray, transform: Optional[str]) -> np.ndarray
     if transform == "cos_radians":
         return np.clip(np.cos(values), 0.0, 1.0)
     raise ValueError(f"Unsupported earthaccess variable transform: {transform}")
+
+
+def _apply_fill_value(
+    values: np.ndarray, fill_value: Optional[float], field_name: str
+) -> np.ndarray:
+    non_finite = ~np.isfinite(values)
+    count = int(np.count_nonzero(non_finite))
+    if count == 0 or fill_value is None:
+        return values
+    print(f"Replacing {count} non-finite value(s) in {field_name!r} with {fill_value}")
+    return np.where(non_finite, fill_value, values)
 
 
 def _solar_cosine(
@@ -418,6 +438,7 @@ def main() -> int:
         try:
             for nasa_var, mapping in (stream.get("variables") or {}).items():
                 field_name, transform = _mapping_target_and_transform(mapping)
+                fill_value = _mapping_fill_value(mapping)
                 if nasa_var not in dataset:
                     raise KeyError(
                         f"Variable {nasa_var!r} not found in earthaccess stream {stream.get('name', '<unnamed>')!r}"
@@ -425,6 +446,7 @@ def main() -> int:
                 selected = _select_time(dataset[nasa_var], timestamp)
                 values = _interp_to_target(selected, target_lons, target_lats)
                 values = _apply_transform(values, transform)
+                values = _apply_fill_value(values, fill_value, field_name)
                 manifest_lines.append(
                     _write_field(
                         args.output_dir,

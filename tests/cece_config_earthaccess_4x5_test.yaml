@@ -51,7 +51,9 @@ cece_data:
       temporal_start: "2022-07-01"
       temporal_end: "2022-07-02"
       variables:
-        LAI: leaf_area_index
+        LAI:
+          model: leaf_area_index
+          fill_value: 0.0
 
     # ------------------------------------------------------------------
     # MERRA-2 land diagnostics — soil temperature and moisture (hourly)
@@ -66,9 +68,15 @@ cece_data:
       temporal_start: "2022-07-01"
       temporal_end: "2022-07-02"
       variables:
-        TSOIL1: soil_temperature
-        RZMC: soil_moisture_root
-        SFMC: soil_moisture
+        TSOIL1:
+          model: soil_temperature
+          fill_value: 273.15
+        RZMC:
+          model: soil_moisture_root
+          fill_value: 0.0
+        SFMC:
+          model: soil_moisture
+          fill_value: 0.0
 
     # ------------------------------------------------------------------
     # MERRA-2 radiation diagnostics — direct/diffuse PAR and solar cosine

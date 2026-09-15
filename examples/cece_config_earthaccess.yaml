@@ -69,7 +69,9 @@ cece_data:
       temporal_start: "2022-07-01"
       temporal_end: "2022-07-04"
       variables:
-        LAI: leaf_area_index
+        LAI:
+          model: leaf_area_index
+          fill_value: 0.0
 
     # ------------------------------------------------------------------
     # Previous Leaf Area Index — same MERRA-2 collection, prior window
@@ -83,7 +85,9 @@ cece_data:
       temporal_start: "2022-06-24"
       temporal_end: "2022-07-01"
       variables:
-        LAI: leaf_area_index_prev
+        LAI:
+          model: leaf_area_index_prev
+          fill_value: 0.0
 
     # ------------------------------------------------------------------
     # 2-meter air temperature — MERRA-2 single-level diagnostics (GES DISC)
@@ -112,8 +116,12 @@ cece_data:
       temporal_start: "2022-07-01"
       temporal_end: "2022-07-04"
       variables:
-        RZMC: soil_moisture_root
-        SFMC: soil_moisture
+        RZMC:
+          model: soil_moisture_root
+          fill_value: 0.0
+        SFMC:
+          model: soil_moisture
+          fill_value: 0.0
 
     # ------------------------------------------------------------------
     # Soil temperature — MERRA-2 land diagnostics layer 1
@@ -128,7 +136,9 @@ cece_data:
       temporal_start: "2022-07-01"
       temporal_end: "2022-07-04"
       variables:
-        TSOIL1: soil_temperature
+        TSOIL1:
+          model: soil_temperature
+          fill_value: 273.15
 
     # ------------------------------------------------------------------
     # Photosynthetically active radiation — MERRA-2 radiation diagnostics

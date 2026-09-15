@@ -205,6 +205,17 @@ derived_variables:
 
 The older `M2T1NXRAD` collection contains broadband fields such as `SWGDN`, but it does not contain `PARDR`, `PARDF`, or `SZA` in the downloaded Version 5.12.4 files.
 
+Land-only products can contain NaN/fill cells over oceans or outside the modeled surface type. Configure replacements explicitly per variable instead of globally weakening validation:
+
+```yaml
+variables:
+	LAI:
+		model: leaf_area_index
+		fill_value: 0.0
+```
+
+The helper replaces only non-finite values for mappings that define `fill_value`; all other fields still fail validation when they contain NaN or infinity. The examples use zero for missing LAI and soil moisture, representing no vegetation or available soil water, and `273.15 K` for missing layer-1 soil temperature where zero-moisture/zero-LAI fields suppress land emissions.
+
 If the live test fails to authenticate, confirm that `~/.netrc` is mode `600` and that `python -c 'import earthaccess; print(earthaccess.login(strategy="all").authenticated)'` returns `True` in the active environment.
 
 ### Staging EarthAccess Streams for Compute Nodes Without Network Access
