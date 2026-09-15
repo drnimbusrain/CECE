@@ -23,6 +23,12 @@ def _require_earthaccess() -> None:
         )
 
 
+def _effective_provider(daac: Optional[str], cloud_hosted: bool) -> Optional[str]:
+    if cloud_hosted and daac == "LPDAAC_ECS":
+        return "LPCLOUD"
+    return daac
+
+
 @dataclass
 class EarthAccessStreamConfig:
     """CMR search parameters for a single NASA Earthdata granule collection.
@@ -137,20 +143,22 @@ class EarthAccessStreamResolver:
         ImportError
             If the ``cloud`` optional dependencies are not installed.
         """
+        provider = _effective_provider(cfg.daac, cfg.cloud_hosted)
         granules = earthaccess.search_data(
             short_name=cfg.short_name,
             temporal=(cfg.temporal_start, cfg.temporal_end),
             bounding_box=cfg.bounding_box,
             version=cfg.version,
             cloud_hosted=cfg.cloud_hosted,
-            daac=cfg.daac,
+            provider=provider,
             count=-1,
         )
 
         if not granules:
             raise RuntimeError(
                 f"No earthaccess granules found: short_name={cfg.short_name!r} "
-                f"temporal=({cfg.temporal_start!r}, {cfg.temporal_end!r})"
+                f"temporal=({cfg.temporal_start!r}, {cfg.temporal_end!r}) "
+                f"provider={provider!r} configured_daac={cfg.daac!r}"
             )
 
         if cfg.use_virtual:

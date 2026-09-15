@@ -163,7 +163,7 @@ def _safe_name(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "_", name)
 
 
-def _effective_daac(stream: dict) -> Any:
+def _effective_provider(stream: dict) -> Any:
     daac = stream.get("daac")
     if stream.get("cloud_hosted", True) and daac == "LPDAAC_ECS":
         return "LPCLOUD"
@@ -176,7 +176,7 @@ def _open_dataset(stream: dict) -> Any:
 
     earthaccess.login(strategy=os.getenv("CECE_EARTHACCESS_AUTH_STRATEGY", "all"))
 
-    daac = _effective_daac(stream)
+    provider = _effective_provider(stream)
 
     granules = earthaccess.search_data(
         short_name=stream["short_name"],
@@ -184,7 +184,7 @@ def _open_dataset(stream: dict) -> Any:
         bounding_box=stream.get("bounding_box"),
         version=stream.get("version"),
         cloud_hosted=stream.get("cloud_hosted", True),
-        daac=daac,
+        provider=provider,
         count=-1,
     )
     if not granules:
@@ -192,7 +192,7 @@ def _open_dataset(stream: dict) -> Any:
             "No earthaccess granules found for stream "
             f"{stream.get('name', '<unnamed>')!r} "
             f"(short_name={stream.get('short_name')!r}, version={stream.get('version')!r}, "
-            f"daac={daac!r}, configured_daac={stream.get('daac')!r}, "
+            f"provider={provider!r}, configured_daac={stream.get('daac')!r}, "
             f"cloud_hosted={stream.get('cloud_hosted', True)!r}, "
             f"temporal=({stream.get('temporal_start')!r}, {stream.get('temporal_end')!r}), "
             f"bounding_box={stream.get('bounding_box')!r})"

@@ -136,9 +136,9 @@ def _earthaccess_streams(config: Dict[str, Any]) -> List[Dict[str, Any]]:
     return streams
 
 
-def _effective_daac(stream: Dict[str, Any]) -> Any:
+def _effective_provider(stream: Dict[str, Any]) -> Any:
     daac = stream.get("daac")
-    if stream.get("cloud_hosted", True):
+    if stream.get("cloud_hosted", True) and daac == "LPDAAC_ECS":
         return _DAAC_ALIASES.get(daac, daac)
     return daac
 
@@ -148,14 +148,14 @@ def _preflight_streams(config: Dict[str, Any], auth_strategy: str) -> None:
 
     earthaccess.login(strategy=auth_strategy)
     for stream in _earthaccess_streams(config):
-        daac = _effective_daac(stream)
+        provider = _effective_provider(stream)
         granules = earthaccess.search_data(
             short_name=stream["short_name"],
             temporal=(stream["temporal_start"], stream["temporal_end"]),
             bounding_box=stream.get("bounding_box"),
             version=stream.get("version"),
             cloud_hosted=stream.get("cloud_hosted", True),
-            daac=daac,
+            provider=provider,
             count=1,
         )
         if not granules:
@@ -163,7 +163,7 @@ def _preflight_streams(config: Dict[str, Any], auth_strategy: str) -> None:
                 "No earthaccess granules found during preflight for stream "
                 f"{stream.get('name', '<unnamed>')!r} "
                 f"(short_name={stream.get('short_name')!r}, version={stream.get('version')!r}, "
-                f"daac={daac!r}, configured_daac={stream.get('daac')!r}, "
+                f"provider={provider!r}, configured_daac={stream.get('daac')!r}, "
                 f"cloud_hosted={stream.get('cloud_hosted', True)!r}, "
                 f"temporal=({stream.get('temporal_start')!r}, {stream.get('temporal_end')!r}), "
                 f"bounding_box={stream.get('bounding_box')!r})"

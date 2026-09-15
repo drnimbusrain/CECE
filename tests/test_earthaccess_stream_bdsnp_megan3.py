@@ -515,10 +515,10 @@ class TestEarthAccessStreamResolverMocked:
 
     def test_resolver_returns_dataset(self):
         ds = _make_smap_dataset()
-        mock_ea = MagicMock()
-        mock_ea.login.return_value = MagicMock()
-        mock_ea.search_data.return_value = [MagicMock()]
-        mock_ea.open.return_value = [MagicMock()]
+        mock_ea = MagicMock(autospec=True)
+        mock_ea.login.return_value = MagicMock(autospec=True)
+        mock_ea.search_data.return_value = [MagicMock(autospec=True)]
+        mock_ea.open.return_value = [MagicMock(autospec=True)]
 
         mock_xr = MagicMock()
         mock_xr.open_mfdataset.return_value = ds
@@ -547,6 +547,44 @@ class TestEarthAccessStreamResolverMocked:
                     _ea_resolver_mod.__dict__.pop(attr, None)
 
         assert result is ds
+        mock_ea.search_data.assert_called_once()
+        assert mock_ea.search_data.call_args.kwargs["provider"] is None
+        assert "daac" not in mock_ea.search_data.call_args.kwargs
+
+    def test_resolver_passes_daac_as_provider(self):
+        mock_ea = MagicMock()
+        mock_ea.login.return_value = MagicMock()
+        mock_ea.search_data.return_value = [MagicMock()]
+        mock_ea.open.return_value = [MagicMock()]
+
+        mock_xr = MagicMock()
+        mock_xr.open_mfdataset.return_value = MagicMock()
+
+        _ea_resolver_mod.earthaccess = mock_ea
+        _ea_resolver_mod.xr = mock_xr
+        _ea_resolver_mod._EARTHACCESS_AVAILABLE = True
+
+        try:
+            resolver = EarthAccessStreamResolver.__new__(EarthAccessStreamResolver)
+            resolver._auth = MagicMock()
+
+            cfg = EarthAccessStreamConfig(
+                name="modis_lai",
+                short_name="MCD15A2H",
+                temporal_start="2022-06-25",
+                temporal_end="2022-07-04",
+                version="061",
+                daac="LPCLOUD",
+            )
+            resolver.open_as_xarray(cfg)
+        finally:
+            _ea_resolver_mod._EARTHACCESS_AVAILABLE = _EARTHACCESS_AVAILABLE
+            for attr in ("earthaccess", "xr"):
+                if not _EARTHACCESS_AVAILABLE:
+                    _ea_resolver_mod.__dict__.pop(attr, None)
+
+        assert mock_ea.search_data.call_args.kwargs["provider"] == "LPCLOUD"
+        assert "daac" not in mock_ea.search_data.call_args.kwargs
 
     def test_resolver_raises_on_no_granules(self):
         mock_ea = MagicMock()
@@ -732,11 +770,11 @@ class TestStandaloneEarthAccessIngestHelper:
 
     def test_helper_maps_lpdaac_cloud_provider(self):
         stream = {"cloud_hosted": True, "daac": "LPDAAC_ECS"}
-        assert _standalone_ingest_mod._effective_daac(stream) == "LPCLOUD"
+        assert _standalone_ingest_mod._effective_provider(stream) == "LPCLOUD"
 
     def test_helper_preserves_non_cloud_provider(self):
         stream = {"cloud_hosted": False, "daac": "LPDAAC_ECS"}
-        assert _standalone_ingest_mod._effective_daac(stream) == "LPDAAC_ECS"
+        assert _standalone_ingest_mod._effective_provider(stream) == "LPDAAC_ECS"
 
     def test_helper_interpolates_to_target_grid(self):
         ds = xr.Dataset(
