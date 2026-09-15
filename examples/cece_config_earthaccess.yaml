@@ -61,7 +61,7 @@ cece_data:
     # Leaf Area Index — MERRA-2 land diagnostics (GES DISC, hourly NetCDF4)
     # Provides: leaf_area_index (current cycle)
     # ------------------------------------------------------------------
-    - name: modis_lai
+    - name: merra2_lai
       source: earthaccess
       short_name: M2T1NXLND
       daac: GES_DISC
@@ -75,7 +75,7 @@ cece_data:
     # Previous Leaf Area Index — same MERRA-2 collection, prior window
     # Provides: leaf_area_index_prev (MEGAN3 leaf-age response)
     # ------------------------------------------------------------------
-    - name: modis_lai_previous
+    - name: merra2_lai_previous
       source: earthaccess
       short_name: M2T1NXLND
       daac: GES_DISC
@@ -100,33 +100,35 @@ cece_data:
         T2M: temperature
 
     # ------------------------------------------------------------------
-    # Root-zone and surface soil moisture — SMAP L4 (NSIDC, 3-hourly)
-    # Provides: soil_moisture_root, soil_moisture (surface)
+    # Root-zone and surface soil moisture — MERRA-2 land diagnostics
+    # Provides volumetric water content on the regular MERRA-2 grid
     # ------------------------------------------------------------------
-    - name: smap_soil
+    - name: merra2_soil
       source: earthaccess
-      short_name: SPL4SMGP
-      daac: NSIDC_CPRD
+      short_name: M2T1NXLND
+      version: "5.12.4"
+      daac: GES_DISC
       cloud_hosted: true
       temporal_start: "2022-07-01"
       temporal_end: "2022-07-04"
       variables:
-        sm_rootzone: soil_moisture_root
-        sm_surface: soil_moisture
+        RZMC: soil_moisture_root
+        SFMC: soil_moisture
 
     # ------------------------------------------------------------------
-    # Soil temperature — SMAP L4 (same collection as above)
+    # Soil temperature — MERRA-2 land diagnostics layer 1
     # Provides: soil_temperature (used by BDSNP)
     # ------------------------------------------------------------------
-    - name: smap_soiltemp
+    - name: merra2_soiltemp
       source: earthaccess
-      short_name: SPL4SMGP
-      daac: NSIDC_CPRD
+      short_name: M2T1NXLND
+      version: "5.12.4"
+      daac: GES_DISC
       cloud_hosted: true
       temporal_start: "2022-07-01"
       temporal_end: "2022-07-04"
       variables:
-        soil_temp_layer1: soil_temperature
+        TSOIL1: soil_temperature
 
     # ------------------------------------------------------------------
     # Photosynthetically active radiation — MERRA-2 radiation diagnostics

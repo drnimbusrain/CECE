@@ -312,10 +312,12 @@ def _open_dataset(stream: dict, download_dir: Optional[Path] = None) -> Any:
     if stream.get("cache_type") is not None:
         open_kwargs["cache_type"] = stream["cache_type"]
 
+    dataset_kwargs = {"engine": "h5netcdf", "combine": "by_coords"}
+
     earthaccess.login(strategy=strategy)
     if download_dir is not None:
         local_paths = _download_granules(granules, download_dir, provider)
-        return xr.open_mfdataset(local_paths, engine="h5netcdf", combine="by_coords")
+        return xr.open_mfdataset(local_paths, **dataset_kwargs)
 
     try:
         file_objs = (
@@ -326,7 +328,7 @@ def _open_dataset(stream: dict, download_dir: Optional[Path] = None) -> Any:
     except TypeError:
         file_objs = earthaccess.open(granules)
 
-    return xr.open_mfdataset(file_objs, engine="h5netcdf", combine="by_coords")
+    return xr.open_mfdataset(file_objs, **dataset_kwargs)
 
 
 def main() -> int:

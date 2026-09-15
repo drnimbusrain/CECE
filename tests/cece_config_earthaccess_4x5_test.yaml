@@ -43,7 +43,7 @@ cece_data:
     # ------------------------------------------------------------------
     # MERRA-2 land diagnostics — Leaf Area Index (hourly NetCDF4)
     # ------------------------------------------------------------------
-    - name: modis_lai
+    - name: merra2_lai
       source: earthaccess
       short_name: M2T1NXLND
       daac: GES_DISC
@@ -54,20 +54,21 @@ cece_data:
         LAI: leaf_area_index
 
     # ------------------------------------------------------------------
-    # SMAP L4 SPL4SMGP — soil temperature and moisture (3-hourly)
-    # Feeds both MEGAN3 and BDSNP
+    # MERRA-2 land diagnostics — soil temperature and moisture (hourly)
+    # Regular-grid NetCDF4 fields feed both MEGAN3 and BDSNP
     # ------------------------------------------------------------------
-    - name: smap_soil
+    - name: merra2_soil
       source: earthaccess
-      short_name: SPL4SMGP
-      daac: NSIDC_CPRD
+      short_name: M2T1NXLND
+      version: "5.12.4"
+      daac: GES_DISC
       cloud_hosted: true
       temporal_start: "2022-07-01"
       temporal_end: "2022-07-02"
       variables:
-        soil_temp_layer1: soil_temperature
-        sm_rootzone: soil_moisture_root
-        sm_surface: soil_moisture
+        TSOIL1: soil_temperature
+        RZMC: soil_moisture_root
+        SFMC: soil_moisture
 
     # ------------------------------------------------------------------
     # MERRA-2 radiation diagnostics — direct/diffuse PAR and solar cosine
