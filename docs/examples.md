@@ -219,6 +219,8 @@ python scripts/stage_earthaccess_streams.py \
 
 Use Earthdata Cloud provider IDs in `source: earthaccess` streams. For example, LP DAAC cloud-hosted MODIS collections should use `daac: LPCLOUD`, not the legacy archive provider `LPDAAC_ECS`.
 
+The current CECE EarthAccess helper opens granules through `xarray+h5netcdf`, so staged streams must resolve to NetCDF4/HDF5-readable data such as MERRA-2 `.nc4` granules. LP DAAC MODIS products such as `MCD15A2H` and `MCD12Q1` are commonly delivered as HDF-EOS `.hdf` granules; those require a separate HDF-EOS conversion path before CECE can consume them as local NetCDF/AMIO streams.
+
 Run CECE on compute nodes with remote fetching disabled and the staged cache enabled:
 
 ```bash

@@ -58,34 +58,32 @@ physics_schemes:
 cece_data:
   streams:
     # ------------------------------------------------------------------
-    # Leaf Area Index — MODIS MCD15A2H (LP DAAC, 500 m, 8-day)
+    # Leaf Area Index — MERRA-2 land diagnostics (GES DISC, hourly NetCDF4)
     # Provides: leaf_area_index (current cycle)
     # ------------------------------------------------------------------
     - name: modis_lai
       source: earthaccess
-      short_name: MCD15A2H
-      version: "061"
-      daac: LPCLOUD
+      short_name: M2T1NXLND
+      daac: GES_DISC
       cloud_hosted: true
-      temporal_start: "2022-06-25"
+      temporal_start: "2022-07-01"
       temporal_end: "2022-07-04"
       variables:
-        Lai_500m: leaf_area_index
+        LAI: leaf_area_index
 
     # ------------------------------------------------------------------
-    # Previous Leaf Area Index — same MODIS collection, prior 8-day cycle
+    # Previous Leaf Area Index — same MERRA-2 collection, prior window
     # Provides: leaf_area_index_prev (MEGAN3 leaf-age response)
     # ------------------------------------------------------------------
     - name: modis_lai_previous
       source: earthaccess
-      short_name: MCD15A2H
-      version: "061"
-      daac: LPCLOUD
+      short_name: M2T1NXLND
+      daac: GES_DISC
       cloud_hosted: true
-      temporal_start: "2022-06-17"
-      temporal_end: "2022-06-30"
+      temporal_start: "2022-06-24"
+      temporal_end: "2022-07-01"
       variables:
-        Lai_500m: leaf_area_index_prev
+        LAI: leaf_area_index_prev
 
     # ------------------------------------------------------------------
     # 2-meter air temperature — MERRA-2 single-level diagnostics (GES DISC)

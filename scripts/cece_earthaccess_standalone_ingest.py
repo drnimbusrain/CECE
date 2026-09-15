@@ -170,6 +170,44 @@ def _effective_provider(stream: dict) -> Any:
     return daac
 
 
+def _granule_data_links(granule: Any) -> List[str]:
+    data_links = getattr(granule, "data_links", None)
+    if callable(data_links):
+        return [str(link) for link in data_links()]
+    return [str(link) for link in getattr(granule, "data_links", []) or []]
+
+
+def _first_data_link(granules: List[Any]) -> Optional[str]:
+    for granule in granules:
+        for link in _granule_data_links(granule):
+            lowered = link.lower()
+            if lowered.startswith(("http://", "https://", "s3://")):
+                return link
+    return None
+
+
+def _is_hdf_eos_link(link: Optional[str]) -> bool:
+    if not link:
+        return False
+    lowered = link.lower().split("?", 1)[0]
+    return lowered.endswith(".hdf")
+
+
+def _raise_if_unsupported_granule_format(stream: dict, granules: List[Any]) -> None:
+    first_link = _first_data_link(granules)
+    if not _is_hdf_eos_link(first_link):
+        return
+
+    raise RuntimeError(
+        "EarthAccess stream "
+        f"{stream.get('name', '<unnamed>')!r} returned HDF-EOS/HDF4 granules, "
+        "which CECE's current cloud extras cannot read with xarray+h5netcdf. "
+        f"Example data link: {first_link}. Use a NetCDF4/HDF5-compatible Earthdata "
+        "collection for this field, or pre-convert the HDF-EOS granules to NetCDF "
+        "on a login/data-transfer node and configure CECE to read those local files."
+    )
+
+
 def _open_dataset(stream: dict) -> Any:
     import earthaccess
     import xarray as xr
@@ -197,6 +235,7 @@ def _open_dataset(stream: dict) -> Any:
             f"temporal=({stream.get('temporal_start')!r}, {stream.get('temporal_end')!r}), "
             f"bounding_box={stream.get('bounding_box')!r})"
         )
+    _raise_if_unsupported_granule_format(stream, granules)
 
     open_kwargs = {}
     if stream.get("block_size") is not None:

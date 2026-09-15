@@ -41,19 +41,17 @@ physics_schemes:
 cece_data:
   streams:
     # ------------------------------------------------------------------
-    # MODIS MCD15A2H — Leaf Area Index (8-day, LP DAAC)
-    # temporal window is wider than the run to cover prev-LAI
+    # MERRA-2 land diagnostics — Leaf Area Index (hourly NetCDF4)
     # ------------------------------------------------------------------
     - name: modis_lai
       source: earthaccess
-      short_name: MCD15A2H
-      version: "061"
-      daac: LPCLOUD
+      short_name: M2T1NXLND
+      daac: GES_DISC
       cloud_hosted: true
-      temporal_start: "2022-06-25"
-      temporal_end: "2022-07-04"
+      temporal_start: "2022-07-01"
+      temporal_end: "2022-07-02"
       variables:
-        Lai_500m: leaf_area_index
+        LAI: leaf_area_index
 
     # ------------------------------------------------------------------
     # SMAP L4 SPL4SMGP — soil temperature and moisture (3-hourly)

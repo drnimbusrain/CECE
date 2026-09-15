@@ -763,6 +763,13 @@ class TestEarthAccessStreamBridgeMocked:
 class TestStandaloneEarthAccessIngestHelper:
     """Non-network coverage for the native driver's Earthaccess helper."""
 
+    class _FakeGranule:
+        def __init__(self, links):
+            self._links = links
+
+        def data_links(self):
+            return self._links
+
     def test_helper_cos_degrees_transform(self):
         values = np.array([[0.0, 60.0, 90.0, 120.0]], dtype=np.float64)
         transformed = _standalone_ingest_mod._apply_transform(values, "cos_degrees")
@@ -775,6 +782,31 @@ class TestStandaloneEarthAccessIngestHelper:
     def test_helper_preserves_non_cloud_provider(self):
         stream = {"cloud_hosted": False, "daac": "LPDAAC_ECS"}
         assert _standalone_ingest_mod._effective_provider(stream) == "LPDAAC_ECS"
+
+    def test_helper_rejects_hdf_eos_granules_before_xarray_open(self):
+        stream = {"name": "modis_lai"}
+        granules = [
+            self._FakeGranule(
+                [
+                    "https://data.lpdaac.earthdatacloud.nasa.gov/lp-prod-protected/MCD15A2H/file.hdf"
+                ]
+            )
+        ]
+
+        with pytest.raises(RuntimeError, match="HDF-EOS/HDF4"):
+            _standalone_ingest_mod._raise_if_unsupported_granule_format(
+                stream, granules
+            )
+
+    def test_helper_allows_netcdf4_granules(self):
+        stream = {"name": "merra2_temperature_2m"}
+        granules = [
+            self._FakeGranule(
+                ["https://data.gesdisc.earthdata.nasa.gov/data/MERRA2/file.nc4"]
+            )
+        ]
+
+        _standalone_ingest_mod._raise_if_unsupported_granule_format(stream, granules)
 
     def test_helper_interpolates_to_target_grid(self):
         ds = xr.Dataset(
