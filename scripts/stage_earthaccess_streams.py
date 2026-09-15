@@ -10,15 +10,21 @@ set in the compute job.
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, Iterable, Iterator, List, Tuple
+from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple
 
 import numpy as np
 import yaml
+
+
+_DAAC_ALIASES = {
+    "LPDAAC_ECS": "LPCLOUD",
+}
 
 
 def _parse_datetime(value: str) -> datetime:
@@ -43,6 +49,20 @@ def _require_mapping(config: Any) -> Dict[str, Any]:
     if not isinstance(config, dict):
         raise ValueError("CECE config must be a YAML mapping")
     return config
+
+
+def _bounding_box_from_grid(
+    grid: Dict[str, Any],
+) -> Optional[Tuple[float, float, float, float]]:
+    required = ("lon_min", "lon_max", "lat_min", "lat_max")
+    if not all(key in grid for key in required):
+        return None
+    return (
+        float(grid["lon_min"]),
+        float(grid["lat_min"]),
+        float(grid["lon_max"]),
+        float(grid["lat_max"]),
+    )
 
 
 def _grid_coordinates(config: Dict[str, Any]) -> Tuple[np.ndarray, np.ndarray]:
@@ -103,6 +123,56 @@ def _load_config(path: Path) -> Dict[str, Any]:
     return _require_mapping(yaml.safe_load(path.read_text()))
 
 
+def _earthaccess_streams(config: Dict[str, Any]) -> List[Dict[str, Any]]:
+    grid = config.get("driver", {}).get("grid", {}) or {}
+    streams = []
+    for stream in config.get("cece_data", {}).get("streams", []) or []:
+        if not isinstance(stream, dict) or stream.get("source") != "earthaccess":
+            continue
+        item = dict(stream)
+        if item.get("bounding_box") is None:
+            item["bounding_box"] = _bounding_box_from_grid(grid)
+        streams.append(item)
+    return streams
+
+
+def _effective_daac(stream: Dict[str, Any]) -> Any:
+    daac = stream.get("daac")
+    if stream.get("cloud_hosted", True):
+        return _DAAC_ALIASES.get(daac, daac)
+    return daac
+
+
+def _preflight_streams(config: Dict[str, Any], auth_strategy: str) -> None:
+    import earthaccess
+
+    earthaccess.login(strategy=auth_strategy)
+    for stream in _earthaccess_streams(config):
+        daac = _effective_daac(stream)
+        granules = earthaccess.search_data(
+            short_name=stream["short_name"],
+            temporal=(stream["temporal_start"], stream["temporal_end"]),
+            bounding_box=stream.get("bounding_box"),
+            version=stream.get("version"),
+            cloud_hosted=stream.get("cloud_hosted", True),
+            daac=daac,
+            count=1,
+        )
+        if not granules:
+            raise RuntimeError(
+                "No earthaccess granules found during preflight for stream "
+                f"{stream.get('name', '<unnamed>')!r} "
+                f"(short_name={stream.get('short_name')!r}, version={stream.get('version')!r}, "
+                f"daac={daac!r}, configured_daac={stream.get('daac')!r}, "
+                f"cloud_hosted={stream.get('cloud_hosted', True)!r}, "
+                f"temporal=({stream.get('temporal_start')!r}, {stream.get('temporal_end')!r}), "
+                f"bounding_box={stream.get('bounding_box')!r})"
+            )
+        print(
+            f"preflight ok: {stream.get('name', '<unnamed>')} ({len(granules)} sample granule)"
+        )
+
+
 def _copy_stage_metadata(stage_dir: Path, config_path: Path, step_count: int) -> None:
     metadata = {
         "config": str(config_path),
@@ -137,6 +207,16 @@ def main() -> int:
     parser.add_argument(
         "--overwrite", action="store_true", help="Replace existing step_N directories"
     )
+    parser.add_argument(
+        "--preflight-only",
+        action="store_true",
+        help="Validate EarthAccess searches and exit without staging files",
+    )
+    parser.add_argument(
+        "--auth-strategy",
+        default=os.getenv("CECE_EARTHACCESS_AUTH_STRATEGY", "all"),
+        help="EarthAccess login strategy: all, environment, netrc, or interactive",
+    )
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[1]
@@ -144,6 +224,10 @@ def main() -> int:
     stage_dir = args.stage_dir.resolve()
     config = _load_config(config_path)
     driver = config.get("driver") or {}
+
+    if args.preflight_only:
+        _preflight_streams(config, args.auth_strategy)
+        return 0
 
     start_time = _parse_datetime(args.start_time or str(driver["start_time"]))
     end_time = _parse_datetime(args.end_time or str(driver["end_time"]))

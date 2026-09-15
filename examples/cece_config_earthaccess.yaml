@@ -65,7 +65,7 @@ cece_data:
       source: earthaccess
       short_name: MCD15A2H
       version: "061"
-      daac: LPDAAC_ECS
+      daac: LPCLOUD
       cloud_hosted: true
       temporal_start: "2022-06-25"
       temporal_end: "2022-07-04"
@@ -80,7 +80,7 @@ cece_data:
       source: earthaccess
       short_name: MCD15A2H
       version: "061"
-      daac: LPDAAC_ECS
+      daac: LPCLOUD
       cloud_hosted: true
       temporal_start: "2022-06-17"
       temporal_end: "2022-06-30"
@@ -170,7 +170,7 @@ cece_data:
       source: earthaccess
       short_name: MCD12Q1
       version: "061"
-      daac: LPDAAC_ECS
+      daac: LPCLOUD
       cloud_hosted: true
       temporal_start: "2022-01-01"
       temporal_end: "2022-12-31"

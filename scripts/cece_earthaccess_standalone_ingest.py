@@ -11,6 +11,7 @@ that the C++ driver injects into the CECE import state.
 from __future__ import annotations
 
 import argparse
+import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -162,11 +163,20 @@ def _safe_name(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "_", name)
 
 
+def _effective_daac(stream: dict) -> Any:
+    daac = stream.get("daac")
+    if stream.get("cloud_hosted", True) and daac == "LPDAAC_ECS":
+        return "LPCLOUD"
+    return daac
+
+
 def _open_dataset(stream: dict) -> Any:
     import earthaccess
     import xarray as xr
 
-    earthaccess.login(strategy="all")
+    earthaccess.login(strategy=os.getenv("CECE_EARTHACCESS_AUTH_STRATEGY", "all"))
+
+    daac = _effective_daac(stream)
 
     granules = earthaccess.search_data(
         short_name=stream["short_name"],
@@ -174,12 +184,18 @@ def _open_dataset(stream: dict) -> Any:
         bounding_box=stream.get("bounding_box"),
         version=stream.get("version"),
         cloud_hosted=stream.get("cloud_hosted", True),
-        daac=stream.get("daac"),
+        daac=daac,
         count=-1,
     )
     if not granules:
         raise RuntimeError(
-            f"No earthaccess granules found for stream {stream.get('name', '<unnamed>')!r}"
+            "No earthaccess granules found for stream "
+            f"{stream.get('name', '<unnamed>')!r} "
+            f"(short_name={stream.get('short_name')!r}, version={stream.get('version')!r}, "
+            f"daac={daac!r}, configured_daac={stream.get('daac')!r}, "
+            f"cloud_hosted={stream.get('cloud_hosted', True)!r}, "
+            f"temporal=({stream.get('temporal_start')!r}, {stream.get('temporal_end')!r}), "
+            f"bounding_box={stream.get('bounding_box')!r})"
         )
 
     open_kwargs = {}

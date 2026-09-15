@@ -207,6 +207,18 @@ python scripts/stage_earthaccess_streams.py \
 	--overwrite
 ```
 
+Check the EarthAccess search terms without staging files by adding `--preflight-only`. For non-interactive shells, set the authentication strategy explicitly so missing credentials fail instead of prompting:
+
+```bash
+python scripts/stage_earthaccess_streams.py \
+	--config examples/cece_config_earthaccess_megan3.yaml \
+	--stage-dir /scratch/$USER/cece_earthaccess_stage \
+	--preflight-only \
+	--auth-strategy netrc
+```
+
+Use Earthdata Cloud provider IDs in `source: earthaccess` streams. For example, LP DAAC cloud-hosted MODIS collections should use `daac: LPCLOUD`, not the legacy archive provider `LPDAAC_ECS`.
+
 Run CECE on compute nodes with remote fetching disabled and the staged cache enabled:
 
 ```bash

@@ -730,6 +730,14 @@ class TestStandaloneEarthAccessIngestHelper:
         transformed = _standalone_ingest_mod._apply_transform(values, "cos_degrees")
         assert np.allclose(transformed, [[1.0, 0.5, 0.0, 0.0]])
 
+    def test_helper_maps_lpdaac_cloud_provider(self):
+        stream = {"cloud_hosted": True, "daac": "LPDAAC_ECS"}
+        assert _standalone_ingest_mod._effective_daac(stream) == "LPCLOUD"
+
+    def test_helper_preserves_non_cloud_provider(self):
+        stream = {"cloud_hosted": False, "daac": "LPDAAC_ECS"}
+        assert _standalone_ingest_mod._effective_daac(stream) == "LPDAAC_ECS"
+
     def test_helper_interpolates_to_target_grid(self):
         ds = xr.Dataset(
             {
