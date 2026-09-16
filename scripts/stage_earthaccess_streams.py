@@ -345,11 +345,17 @@ def main() -> int:
         action="store_true",
         help="During preflight, download one granule per stream to verify EULA/provider authorization",
     )
+    parser.add_argument(
+        "--download-dir",
+        type=Path,
+        help="Directory where raw EarthAccess granules are downloaded/cached (default: <stage-dir>/granules)",
+    )
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[1]
     config_path = args.config.resolve()
     stage_dir = args.stage_dir.resolve()
+    download_dir = (args.download_dir or (stage_dir / "granules")).resolve()
     config = _load_config(config_path)
     driver = config.get("driver") or {}
 
@@ -407,7 +413,7 @@ def main() -> int:
                     "--lat-file",
                     str(lat_file),
                     "--download-dir",
-                    str(step_dir / "granules"),
+                    str(download_dir),
                 ],
                 check=True,
                 env=helper_env,
