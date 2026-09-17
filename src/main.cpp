@@ -5,8 +5,6 @@
 #include <axis/topology/named_grid_registry.hpp>
 #include <cmath>
 #include <conf/conf.hpp>
-#include <cstdio>
-#include <fstream>
 #include <halo/communicator.hpp>
 #include <halo/environment.hpp>
 #include <iostream>
@@ -39,9 +37,10 @@ constexpr inline double radians_to_degrees(double rad) {
     return rad * 180.0 / M_PI;
 }
 
-// Build the AMIO coordinate-manifest YAML for reading lon/lat out of `path`.
-// Kept as a named helper so the manifest schema (backend, staging pool, worker
-// pool, prefetch tuning) lives in exactly one place.
+// Build the in-memory AMIO coordinate-manifest YAML for reading lon/lat out
+// of `path`. Kept as a named helper so the manifest schema (backend, staging
+// pool, worker pool, prefetch tuning) lives in exactly one place; the call
+// site in main() only opens/reads with the returned string.
 std::string BuildCoordinateManifest(const std::string& path) {
     std::ostringstream manifest;
     manifest << "backend: netcdf4\n"
@@ -276,25 +275,24 @@ int main(int argc, char* argv[]) {
             }
 
             if (!input_file_path.empty()) {
+                // Build the coordinate manifest in memory and pass it directly to AMIO.
+                // Writing it to a shared-disk file (e.g. Lustre) races when multiple MPI
+                // ranks per node truncate/rewrite the same path concurrently, which
+                // produces torn reads (empty/partial YAML) and spurious open failures.
                 const std::string coord_manifest_content = BuildCoordinateManifest(input_file_path);
-                const std::string coord_manifest_path = "amio_coord_manifest_rank" + std::to_string(my_rank) + ".yaml";
-                {
-                    std::ofstream manifest_file(coord_manifest_path);
-                    manifest_file << coord_manifest_content;
-                }
 
                 amio_core_handle coord_core = nullptr;
                 amio_dataset_handle coord_dataset = nullptr;
                 amio_view_handle lon_view = nullptr;
                 amio_view_handle lat_view = nullptr;
 
-                amio_status_t amio_rc = amio_init(coord_manifest_path.c_str(), &coord_core);
+                amio_status_t amio_rc = amio_init_from_string(coord_manifest_content.c_str(), "yaml", &coord_core);
                 if (amio_rc != AMIO_OK) {
-                    CECE_LOG_ERROR(std::string("amio_init failed for coordinate manifest: ") + amio_strerror(amio_rc));
+                    CECE_LOG_ERROR(std::string("amio_init_from_string failed for coordinate manifest: ") + amio_strerror(amio_rc));
                 } else {
-                    amio_rc = amio_open_dataset(coord_core, coord_manifest_path.c_str(), AMIO_MODE_READ, &coord_dataset);
+                    amio_rc = amio_open_dataset_from_string(coord_core, coord_manifest_content.c_str(), "yaml", AMIO_MODE_READ, &coord_dataset);
                     if (amio_rc != AMIO_OK) {
-                        CECE_LOG_ERROR("amio_open_dataset failed for dataset '" + input_file_path + "': " + amio_strerror(amio_rc));
+                        CECE_LOG_ERROR("amio_open_dataset_from_string failed for dataset '" + input_file_path + "': " + amio_strerror(amio_rc));
                     } else {
                         int file_nx = 0;
                         int file_ny = 0;
@@ -405,7 +403,6 @@ int main(int argc, char* argv[]) {
                     }
                     amio_finalize(coord_core);
                 }
-                std::remove(coord_manifest_path.c_str());
             }
 
             if (is_explicit_gridspec && !loaded_from_file) {

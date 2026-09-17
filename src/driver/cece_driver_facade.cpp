@@ -15,7 +15,6 @@
 #include <dagr/logging.hpp>
 #include <filesystem>
 #include <fstream>
-#include <functional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -159,18 +158,18 @@ RecordBracket cadence_record_bracket(const std::string& cadence, const std::stri
     return br;
 }
 
-std::vector<int> mpi_allreduce_vector(MPI_Comm comm, const std::vector<int>& values, MPI_Op op) {
-    std::vector<int> reduced(values.size(), 0);
-    if (values.empty()) return reduced;
-    const int rc = MPI_Allreduce(values.data(), reduced.data(), static_cast<int>(values.size()), MPI_INT, op, comm);
-    if (rc != MPI_SUCCESS) {
-        throw std::runtime_error("MPI_Allreduce failed with rc=" + std::to_string(rc));
-    }
-    return reduced;
-}
-
+// Reimplemented on halo::allreduce<int> (Decision C): the size>1 branch reduces
+// the single-element 0/1 readiness flag with MPI_MIN through the orchestrator's
+// long-lived halo_comm_ wrapper (passed in as halo_comm) rather than a
+// hand-rolled MPI_Allreduce. The signature adds the halo::Communicator* so this
+// free function can reach the wrapper the orchestrator already owns; every call
+// site passes `halo_comm_ ? &*halo_comm_ : nullptr`. The short-circuits
+// (uninitialized MPI / MPI_COMM_NULL / mpi_size <= 1 return the local readiness
+// value with the same context-based failure_detail discipline) and the
+// not-ready message are preserved verbatim. HALO's throwing error policy
+// replaces the former rc != MPI_SUCCESS branch; the try/catch maps any throw to
+// a failure_detail and returns false (Req 4.1-4.4).
 bool collective_all_ready(halo::Communicator* halo_comm, MPI_Comm comm, bool local_ready, const std::string& context, std::string& failure_detail) {
-    (void)halo_comm;
     // Single distributed predicate (cece_mpi_env.hpp): uninitialized MPI /
     // MPI_COMM_NULL / size <= 1 all take the serial path.
     if (!comm_is_distributed(comm)) {
@@ -178,8 +177,9 @@ bool collective_all_ready(halo::Communicator* halo_comm, MPI_Comm comm, bool loc
         return local_ready;
     }
 
+    // size > 1: reduce the 0/1 readiness flag with MPI_MIN via halo::allreduce.
     try {
-        const std::vector<int> out = mpi_allreduce_vector(comm, std::vector<int>{local_ready ? 1 : 0}, MPI_MIN);
+        const std::vector<int> out = halo::allreduce<int>(*halo_comm, std::vector<int>{local_ready ? 1 : 0}, MPI_MIN);
         if (out[0] != 1) {
             if (failure_detail.empty()) failure_detail = context + " failed on one or more ranks";
             return false;
@@ -191,15 +191,27 @@ bool collective_all_ready(halo::Communicator* halo_comm, MPI_Comm comm, bool loc
     }
 }
 
+// Reimplemented on halo::allreduce<int> (Req 5). Reduces the single-element
+// local_value with MPI_MIN and then MPI_MAX through the orchestrator's
+// long-lived halo_comm_ wrapper (passed in as halo_comm) rather than two
+// hand-rolled MPI_Allreduce calls. The signature adds the halo::Communicator*
+// so this free function can reach the wrapper the orchestrator already owns;
+// every call site passes `halo_comm_ ? &*halo_comm_ : nullptr`. The
+// short-circuits (uninitialized MPI / MPI_COMM_NULL / mpi_size <= 1 return true
+// without any collective) and the mismatch message are preserved verbatim. The
+// two-reduce (MIN then MAX) op sequence is kept. HALO's throwing error policy
+// replaces the former rc != MPI_SUCCESS branch; the try/catch maps any throw to
+// a failure_detail and returns false (Req 5.1-5.4).
 bool collective_int_matches(halo::Communicator* halo_comm, MPI_Comm comm, int local_value, const std::string& name, std::string& failure_detail) {
-    (void)halo_comm;
     // Single distributed predicate (cece_mpi_env.hpp): with one participant
     // min == max == local, so the serial path trivially matches.
     if (!comm_is_distributed(comm)) return true;
 
+    // size > 1: reduce local_value with MPI_MIN then MPI_MAX via halo::allreduce,
+    // preserving the two-reduce op sequence; flag a mismatch when min != max.
     try {
-        const std::vector<int> mins = mpi_allreduce_vector(comm, std::vector<int>{local_value}, MPI_MIN);
-        const std::vector<int> maxs = mpi_allreduce_vector(comm, std::vector<int>{local_value}, MPI_MAX);
+        const std::vector<int> mins = halo::allreduce<int>(*halo_comm, std::vector<int>{local_value}, MPI_MIN);
+        const std::vector<int> maxs = halo::allreduce<int>(*halo_comm, std::vector<int>{local_value}, MPI_MAX);
         const int minimum = mins[0];
         const int maximum = maxs[0];
         if (minimum != maximum) {
@@ -285,28 +297,6 @@ fs::path resolve_earthaccess_helper(const std::string& config_file) {
     }
 
     return cwd_helper;
-}
-
-fs::path amio_manifest_path_for_key(const std::string& key, const std::string& data_model) {
-    const fs::path manifest_dir = fs::absolute(fs::path(".cece_amio_manifests"));
-    std::error_code ec;
-    fs::create_directories(manifest_dir, ec);
-    const std::size_t hash = std::hash<std::string>{}(key + "|" + data_model);
-    return manifest_dir / ("amio_manifest_" + std::to_string(hash) + ".yaml");
-}
-
-bool write_manifest_file(const fs::path& path, const std::string& content, std::string& failure_detail) {
-    std::ofstream out(path);
-    if (!out) {
-        failure_detail = "failed to create AMIO manifest file '" + path.string() + "'";
-        return false;
-    }
-    out << content;
-    if (!out) {
-        failure_detail = "failed to write AMIO manifest file '" + path.string() + "'";
-        return false;
-    }
-    return true;
 }
 
 bool config_has_earthaccess_streams(const std::string& config_file) {
@@ -654,11 +644,9 @@ AmioHandleSet* CeceDriverOrchestrator::GetOrOpenHandleSet(const std::string& han
     }
 
     for (const auto& candidate_model : data_models_to_try) {
+        // Build the manifest in memory once per candidate; no file is written
+        // to disk (Req 9.2).
         const std::string manifest_content = BuildManifestContent(cfg, candidate_model);
-        const fs::path manifest_path = amio_manifest_path_for_key(handle_key, candidate_model);
-        if (!write_manifest_file(manifest_path, manifest_content, failure_detail)) {
-            continue;
-        }
 
         amio_core_handle read_core = nullptr;
         amio_dataset_handle read_dataset = nullptr;
@@ -669,15 +657,15 @@ AmioHandleSet* CeceDriverOrchestrator::GetOrOpenHandleSet(const std::string& han
             amio_set_parent_communicator(MPI_Comm_c2f(MPI_COMM_SELF));
         }
 
-        amio_status_t amio_rc = amio_init(manifest_path.string().c_str(), &read_core);
+        amio_status_t amio_rc = amio_init_from_string(manifest_content.c_str(), "yaml", &read_core);
         if (amio_rc != AMIO_OK) {
-            failure_detail =
-                std::string("amio_init failed for handle '") + handle_key + "': rc=" + std::to_string(amio_rc) + " (" + amio_strerror(amio_rc) + ")";
+            failure_detail = std::string("amio_init_from_string failed for handle '") + handle_key + "': rc=" + std::to_string(amio_rc) + " (" +
+                             amio_strerror(amio_rc) + ")";
         } else {
-            amio_rc = amio_open_dataset(read_core, manifest_path.string().c_str(), AMIO_MODE_READ, &read_dataset);
+            amio_rc = amio_open_dataset_from_string(read_core, manifest_content.c_str(), "yaml", AMIO_MODE_READ, &read_dataset);
             if (amio_rc != AMIO_OK) {
-                failure_detail = std::string("amio_open_dataset failed for '") + cfg.input_file_path + "': rc=" + std::to_string(amio_rc) + " (" +
-                                 amio_strerror(amio_rc) + ")";
+                failure_detail = std::string("amio_open_dataset_from_string failed for '") + cfg.input_file_path +
+                                 "': rc=" + std::to_string(amio_rc) + " (" + amio_strerror(amio_rc) + ")";
             }
         }
 
@@ -700,7 +688,6 @@ AmioHandleSet* CeceDriverOrchestrator::GetOrOpenHandleSet(const std::string& han
             set.dataset = read_dataset;
             set.active_data_model = candidate_model;
             set.manifest_content = manifest_content;
-            set.manifest_path = manifest_path.string();
             auto inserted = amio_handles_.emplace(handle_key, std::move(set));
             return &inserted.first->second;
         }
@@ -718,8 +705,6 @@ AmioHandleSet* CeceDriverOrchestrator::GetOrOpenHandleSet(const std::string& han
             amio_finalize(read_core);
             read_core = nullptr;
         }
-        std::error_code remove_ec;
-        fs::remove(manifest_path, remove_ec);
     }
 
     // All candidates failed: leave failure_detail set, cache nothing.
@@ -853,17 +838,10 @@ bool CeceDriverOrchestrator::TeardownHandles() {
             }
             set.core = nullptr;
         }
-        if (!set.manifest_path.empty()) {
-            std::error_code ec;
-            fs::remove(set.manifest_path, ec);
-            if (ec) {
-                all_ok = false;
-                CECE_LOG_ERROR("[DRIVER] Failed to remove AMIO manifest file '" + set.manifest_path + "': " + ec.message());
-            }
-        }
     }
 
-    // Drop the loop-invariant caches (Req 7.5).
+    // No manifest files to delete: manifests are in-memory strings, never
+    // written to disk (Req 7.3). Drop the loop-invariant caches (Req 7.5).
     amio_handles_.clear();
     stream_configs_.clear();
     slice_caches_.clear();
@@ -948,8 +926,8 @@ bool CeceDriverOrchestrator::RegridToBandBuffer(const std::string& var_name, con
         // rank skips a collective a peer enters (Req 6.2, 8.3, 8.4). Any HALO
         // throw maps to failure_detail and returns false.
         try {
-            const std::vector<int> mn = mpi_allreduce_vector(comm_c_, gate_vec, MPI_MIN);
-            const std::vector<int> mx = mpi_allreduce_vector(comm_c_, gate_vec, MPI_MAX);
+            const std::vector<int> mn = halo::allreduce<int>(*halo_comm_, gate_vec, MPI_MIN);
+            const std::vector<int> mx = halo::allreduce<int>(*halo_comm_, gate_vec, MPI_MAX);
             if (!FusedGateDecision(mn, mx, failure_detail)) return false;
         } catch (const std::exception& e) {
             failure_detail = "front-half readiness gate failed: " + std::string(e.what());
@@ -1026,7 +1004,7 @@ bool CeceDriverOrchestrator::RegridToBandBuffer(const std::string& var_name, con
             return false;
         }
         const std::vector<int> ready_vec{local_ok ? 1 : 0};
-        const std::vector<int> reduced = mpi_allreduce_vector(comm_c_, ready_vec, MPI_MIN);
+        const std::vector<int> reduced = halo::allreduce<int>(*halo_comm_, ready_vec, MPI_MIN);
         if (reduced.empty() || reduced[0] != 1) {
             if (failure_detail.empty()) {
                 failure_detail = "rank-local regrid failed or produced an unexpected destination-band size";
@@ -1435,11 +1413,13 @@ bool CeceDriverOrchestrator::AdvanceTime(const std::string& time_iso8601, void* 
             const int j1 = band_.j1;
 
             // 1. Determine total timesteps (and the per-timestep shape) for the
-            //    input variable. This AMIO version does not expose a metadata
-            //    descriptor call, so probe record 0 for its shape and use bounded read probing for
-            //    the record count. Results are cached per handle_key (record
-            //    count) and per (handle_key, variable) (shape) so the query runs
-            //    at most once per file/variable.
+            //    input variable. amio_describe answers both from the file's
+            //    metadata without staging any payload, replacing the old
+            //    binary search that probed amio_read at ~20 record indices --
+            //    each probe a full-record read, which is exactly the traffic
+            //    band-scoped reads exist to avoid. Results are cached per
+            //    handle_key (record count) and per (handle_key, variable)
+            //    (shape) so the query runs at most once per file/variable.
             int file_nt = 1;
             amio_shape_t var_shape{};
             bool have_shape = false;
@@ -1454,41 +1434,27 @@ bool CeceDriverOrchestrator::AdvanceTime(const std::string& time_iso8601, void* 
                 file_nt = nt_it->second;
             }
             if (nt_it == file_nt_cache_.end() || !have_shape) {
-                amio_view_handle shape_view = nullptr;
-                amio_status_t shape_rc = amio_read(read_dataset, input_var_name.c_str(), 0, nullptr, &shape_view);
-                if (shape_rc == AMIO_OK) {
-                    amio_shape_t probe_shape{};
-                    shape_rc = amio_view_shape(shape_view, &probe_shape);
-                    amio_release_view(shape_view);
-                    if (shape_rc == AMIO_OK && probe_shape.rank >= 2) {
-                        var_shape = probe_shape;
-                        have_shape = true;
-                        var_shape_cache_[shape_key] = var_shape;
-
-                        if (nt_it == file_nt_cache_.end()) {
-                            int low = 1;
-                            int high = 1000000;
-                            int found_nt = 1;
-                            while (low <= high) {
-                                const int mid = low + (high - low) / 2;
-                                amio_view_handle probe_view = nullptr;
-                                const amio_status_t probe_rc = amio_read(read_dataset, input_var_name.c_str(), mid, nullptr, &probe_view);
-                                if (probe_rc == AMIO_OK) {
-                                    amio_release_view(probe_view);
-                                    found_nt = mid + 1;
-                                    low = mid + 1;
-                                } else {
-                                    high = mid - 1;
-                                }
-                            }
-                            file_nt = found_nt;
-                            file_nt_cache_[handle_key] = file_nt;
-                        }
-                    }
-                }
-                if (!have_shape || file_nt <= 0) {
-                    CECE_LOG_WARNING("[DRIVER] AMIO metadata probe failed for '" + input_var_name + "' in '" + cfg.input_file_path +
-                                     "'; record-count or shape probing was unsuccessful.");
+                int64_t nt64 = 0;
+                amio_shape_t desc_shape{};
+                amio_status_t desc_rc = amio_describe(read_dataset, input_var_name.c_str(), &desc_shape, &nt64);
+                if (desc_rc == AMIO_OK && nt64 > 0) {
+                    file_nt = static_cast<int>(nt64);
+                    var_shape = desc_shape;
+                    have_shape = true;
+                    file_nt_cache_[handle_key] = file_nt;
+                    var_shape_cache_[shape_key] = var_shape;
+                } else {
+                    // Metadata unavailable (absent variable, corrupt file, ...).
+                    // There is deliberately no read-probing fallback here: the
+                    // historical binary search probed amio_read at ~20 record
+                    // indices, each probe a full-record read — exactly the
+                    // traffic this band-scoped design exists to avoid — and
+                    // CECE always builds against the pinned AMIO submodule,
+                    // which provides amio_describe. Fail the step instead:
+                    // file_nt = 0 makes the collective readiness gate below
+                    // report a detailed error for this variable.
+                    CECE_LOG_WARNING("[DRIVER] amio_describe failed for '" + input_var_name + "' in '" + cfg.input_file_path +
+                                     "' (rc=" + std::to_string(static_cast<int>(desc_rc)) + "); no record-count fallback is attempted.");
                     file_nt = 0;
                 }
             }
@@ -1688,7 +1654,7 @@ bool CeceDriverOrchestrator::AdvanceTime(const std::string& time_iso8601, void* 
                     // Band-scoped read: when the plan carries an exact source-row
                     // window (build_regrid_plan derives it from the weight matrix's
                     // column range) and the variable's per-timestep shape is known
-                    // from the cached AMIO shape probe, the on-disk fetch is restricted to rows
+                    // (amio_describe), the on-disk fetch is restricted to rows
                     // [src_j0, src_j0 + src_rows). Without this every rank pulls the
                     // WHOLE global record from shared storage and discards all but
                     // its band's footprint -- nranks-fold replicated IO that made

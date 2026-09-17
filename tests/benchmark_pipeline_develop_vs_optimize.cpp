@@ -30,8 +30,15 @@
 //   ./setup.sh -c "/work/build/benchmark_pipeline_develop_vs_optimize"
 
 #include <Kokkos_Core.hpp>
-#include <algorithm>
 #include <axis/axis.hpp>
+
+// develop's axis::solver::apply CSR path rebuilt a KokkosSparse::CrsMatrix per
+// call; reproduce that here. KokkosKernels is now a hard AXIS dependency (found
+// or fetched by AXIS's CMake), so KokkosSparse is always available through the
+// cece->axis link.
+#include <KokkosSparse_CrsMatrix.hpp>
+#include <KokkosSparse_spmv.hpp>
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
@@ -111,12 +118,13 @@ void DEVELOP_apply(const cece::io::RegridPlan& plan, const std::vector<double>& 
     const size_t dst_len = static_cast<size_t>(nx) * nband;
     Kokkos::View<double*, Kokkos::HostSpace> dst_field("dst_field", dst_len);
 
-    // ── develop's axis::solver::apply CSR path (per-call CSR rebuild) ──
-    // This benchmark intentionally models the allocations and deep copies that
-    // the old KokkosSparse path performed, but uses a direct CSR loop because
-    // the deployed CECE toolchain does not provide KokkosSparse headers.
+    // ── develop's axis::solver::apply CSR path (per-call CrsMatrix rebuild) ──
     using MemorySpace = Kokkos::HostSpace;
     using index_t = axis::index_t;
+    using exec_space = MemorySpace::execution_space;
+    using device_t = Kokkos::Device<exec_space, MemorySpace>;
+    using crs_matrix_t = KokkosSparse::CrsMatrix<double, index_t, device_t, void, index_t>;
+    using graph_t = typename crs_matrix_t::staticcrsgraph_type;
 
     const auto row_ptr = plan.matrix.row_ptr();
     const auto col_idx = plan.matrix.col_idx();
@@ -127,16 +135,16 @@ void DEVELOP_apply(const cece::io::RegridPlan& plan, const std::vector<double>& 
     Kokkos::View<index_t*, MemorySpace> entries_nc("entries", col_idx.extent(0));
     Kokkos::deep_copy(entries_nc, col_idx);
 
+    graph_t graph(entries_nc, row_map_nc);
+
     Kokkos::View<double*, MemorySpace> vals_nc("vals", csr_vals.extent(0));
     Kokkos::deep_copy(vals_nc, csr_vals);
 
-    for (size_t row = 0; row < dst_len; ++row) {
-        double sum = 0.0;
-        for (index_t p = row_map_nc(row); p < row_map_nc(row + 1); ++p) {
-            sum += vals_nc(p) * src_field(entries_nc(p));
-        }
-        dst_field(row) = sum;
-    }
+    crs_matrix_t A("develop_spmv", static_cast<index_t>(plan.matrix.n_src()), vals_nc, graph);
+
+    Kokkos::View<const double*, MemorySpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>> x_view(src_field.data(), src_field.extent(0));
+    Kokkos::View<double*, MemorySpace, Kokkos::MemoryTraits<Kokkos::Unmanaged>> y_view(dst_field.data(), dst_field.extent(0));
+    KokkosSparse::spmv("N", 1.0, A, x_view, 0.0, y_view);
     Kokkos::fence("develop::apply::complete");
 
     // develop copied dst_field back into local_dst element-by-element.

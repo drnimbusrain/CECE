@@ -10,11 +10,9 @@ void amio_set_parent_communicator(MPI_Fint comm);
 }
 
 #include <algorithm>
-#include <cstdio>
 #include <cstring>
 #include <ctime>
 #include <filesystem>
-#include <fstream>
 #include <iomanip>
 #include <set>
 #include <sstream>
@@ -442,10 +440,11 @@ int CeceStandaloneWriter::WriteTimeStep(const std::unordered_map<std::string, Du
     std::string filename = ResolveFilename(time_seconds);
     CECE_LOG_INFO("[CECE] Output file: " + filename);
 
-    // The writer manifest is built by rank 0 and broadcast to peer ranks so all
-    // ranks agree on file-work success/failure. The actual AMIO open uses a
-    // rank-owned manifest file because deployed AMIO versions do not always
-    // provide string-manifest entry points.
+    // The writer manifest is built in memory (rank 0) and broadcast to the peer ranks,
+    // then handed directly to AMIO via amio_init_from_string / amio_open_dataset_from_string.
+    // Writing it to a shared-disk file races when multiple ranks per node access the same
+    // path (torn/empty reads, MANIFEST_NOT_FOUND from a peer deleting it first); the
+    // in-memory path avoids the file entirely.
     std::string manifest_content;
 
     amio_core_handle core = nullptr;
@@ -604,22 +603,12 @@ int CeceStandaloneWriter::WriteTimeStep(const std::unordered_map<std::string, Du
         // error and skipping only the writes keeps every rank on the same
         // collective path to the trailing barrier.
         if (!skip_file_work && rank0_writes) {
-            std::string manifest_path;
             try {
-                manifest_path = filename + "_manifest_rank" + std::to_string(rank) + ".yaml";
-                {
-                    std::ofstream manifest_file(manifest_path);
-                    if (!manifest_file) {
-                        throw std::runtime_error("failed to create AMIO writer manifest: " + manifest_path);
-                    }
-                    manifest_file << manifest_content;
-                }
-
-                check_amio_rc(amio_init(manifest_path.c_str(), &core), "amio_init");
+                check_amio_rc(amio_init_from_string(manifest_content.c_str(), "yaml", &core), "amio_init_from_string");
 
                 // Step 3: Open Dataset
-                check_amio_rc(amio_open_dataset(core, manifest_path.c_str(), AMIO_MODE_WRITE, &dataset), "amio_open_dataset");
-                std::remove(manifest_path.c_str());
+                check_amio_rc(amio_open_dataset_from_string(core, manifest_content.c_str(), "yaml", AMIO_MODE_WRITE, &dataset),
+                              "amio_open_dataset_from_string");
             } catch (const std::exception& e) {
                 CECE_LOG_ERROR(std::string("[CECE] Writer open failed: ") + e.what());
                 if (dataset) {
@@ -629,9 +618,6 @@ int CeceStandaloneWriter::WriteTimeStep(const std::unordered_map<std::string, Du
                 if (core) {
                     amio_finalize(core);
                     core = nullptr;
-                }
-                if (!manifest_path.empty()) {
-                    std::remove(manifest_path.c_str());
                 }
                 skip_file_work = true;
             }

@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <dagr/dagr.hpp>
+#include <halo/collectives.hpp>
 #include <halo/communicator.hpp>
 #include <halo/environment.hpp>
 #include <memory>
@@ -70,11 +71,10 @@ struct StreamConfig {
  * @brief Retained AMIO resources for one stream variable, opened at most once.
  */
 struct AmioHandleSet {
-    amio_core_handle core = nullptr;        ///< from amio_init
-    amio_dataset_handle dataset = nullptr;  ///< from amio_open_dataset
+    amio_core_handle core = nullptr;        ///< from amio_init_from_string
+    amio_dataset_handle dataset = nullptr;  ///< from amio_open_dataset_from_string
     std::string active_data_model;          ///< model that actually opened
-    std::string manifest_content;           ///< manifest YAML content
-    std::string manifest_path;              ///< generated compatibility manifest path
+    std::string manifest_content;           ///< in-memory manifest (never a file)
 };
 
 /**
@@ -271,7 +271,7 @@ class CeceDriverOrchestrator {
     // Pure fused front-half gate DECISION helper (Req 6.1, 6.3, 6.4, 8.3).
     //
     // Given the two elementwise-reduced vectors produced by the fused
-    // collective MIN/MAX pair over the packed 5-entry vector
+    // halo::allreduce pair over the packed 5-entry vector
     // [readiness, file_nx, file_ny, field_nlev, plan.identity]:
     //   mn[k] = MIN over ranks of entry k,
     //   mx[k] = MAX over ranks of entry k,
@@ -311,13 +311,13 @@ class CeceDriverOrchestrator {
     // core+dataset handle even when their mapalgo differs (Req 2.1, 2.2, 3.1,
     // 3.2, 7.1, 11.2, 11.7).
     //
-    // On first touch this builds the manifest via BuildManifestContent, writes
-    // it to a generated compatibility manifest file, and opens via the AMIO
-    // file-manifest entry points available in deployed AMIO versions. Only the
-    // open is wrapped in the MPI_COMM_SELF parent-communicator swap; the
-    // communicator is restored to comm_c_ afterward. Candidate data models are
-    // tried in order: {cfg.data_model} when cfg.data_model_explicit, else
-    // {"enhanced", "classic"} (Req 2.5, 2.6).
+    // On first touch this builds the in-memory manifest via BuildManifestContent
+    // and opens via the STRING-based AMIO entry points (amio_init_from_string /
+    // amio_open_dataset_from_string) — no manifest file is written to disk and
+    // no per-step MPI_Barrier is issued. Only the open is wrapped in the
+    // MPI_COMM_SELF parent-communicator swap; the communicator is restored to
+    // comm_c_ afterward. Candidate data models are tried in order: {cfg.data_model}
+    // when cfg.data_model_explicit, else {"enhanced", "classic"} (Req 2.5, 2.6).
     //
     // On success it caches {core, dataset, active_data_model, manifest_content}
     // in amio_handles_ and returns the pointer. On failure of a candidate it
@@ -364,8 +364,8 @@ class CeceDriverOrchestrator {
 
     // Per-variable source shape (rank + per-timestep extents, CF time
     // stripped) keyed by Handle_Identity_Key + "|" + var_name. Populated once
-    // per variable via the cached AMIO shape probe and reused to size the
-    // band-scoped read bounding box in read_slab. Kept
+    // per variable via amio_describe (metadata only, no payload staged) and
+    // reused to size the band-scoped read bounding box in read_slab. Kept
     // separate from file_nt_cache_ because two variables in one file may have
     // different ranks/extents.
     std::unordered_map<std::string, amio_shape_t> var_shape_cache_;

@@ -45,6 +45,7 @@
 #include <rapidcheck/gtest.h>
 #include <unistd.h>
 
+#include <halo/collectives.hpp>
 #include <halo/communicator.hpp>
 #include <halo/environment.hpp>
 #include <string>
@@ -69,12 +70,6 @@ struct CollectiveGateTestAccess {
         return CeceDriverOrchestrator::FusedGateDecision(mn, mx, failure_detail);
     }
 };
-
-std::vector<int> MpiAllreduceVector(const std::vector<int>& values, MPI_Op op) {
-    std::vector<int> reduced(values.size(), 0);
-    MPI_Allreduce(values.data(), reduced.data(), static_cast<int>(values.size()), MPI_INT, op, MPI_COMM_WORLD);
-    return reduced;
-}
 
 }  // namespace cece
 
@@ -307,7 +302,6 @@ TEST(FusedGateEquivalenceE2E, PackedReduceMatchesFiveGates) {
     // Build the halo::Communicator wrapping MPI_COMM_WORLD (predefined => stored
     // directly, never freed), matching the production distributed branch.
     halo::Communicator comm(MPI_COMM_WORLD);
-    (void)comm;
 
     for (const Scenario& s : scenarios) {
         // Determine this rank's contribution: the scenario's per_rank[rank] if
@@ -318,8 +312,8 @@ TEST(FusedGateEquivalenceE2E, PackedReduceMatchesFiveGates) {
 
         // REAL fused reduction — one MIN and one MAX over the packed vector,
         // exactly as RegridToDestinationBuffer issues them (Req 6.1, 6.2).
-        const std::vector<int> mn = MpiAllreduceVector(my_vec, MPI_MIN);
-        const std::vector<int> mx = MpiAllreduceVector(my_vec, MPI_MAX);
+        const std::vector<int> mn = halo::allreduce<int>(comm, my_vec, MPI_MIN);
+        const std::vector<int> mx = halo::allreduce<int>(comm, my_vec, MPI_MAX);
         ASSERT_EQ(mn.size(), 5u);
         ASSERT_EQ(mx.size(), 5u);
 

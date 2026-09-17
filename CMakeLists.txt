@@ -551,9 +551,9 @@ add_executable(benchmark_regrid_apply tests/benchmark_regrid_apply.cpp)
 target_link_libraries(benchmark_regrid_apply PRIVATE cece)
 
 # Standalone develop-vs-optimize per-step pipeline benchmark (regrid+assemble+ingest).
-# Its DEVELOP path reproduces the previous per-call CSR allocations and
-# multiplication without requiring optional KokkosSparse headers, so this target
-# remains buildable with the deployed CECE/AXIS dependency set.
+# Its DEVELOP path constructs a KokkosSparse::CrsMatrix directly; KokkosKernels is
+# now a hard AXIS dependency (found or fetched), so this always builds and the
+# KokkosSparse headers are always on the include path via the cece->axis link.
 add_executable(
   benchmark_pipeline_develop_vs_optimize
   tests/benchmark_pipeline_develop_vs_optimize.cpp
@@ -564,8 +564,7 @@ target_link_libraries(benchmark_pipeline_develop_vs_optimize PRIVATE cece)
 # MPI-main pattern (own main() with MPI + Kokkos init; does NOT link
 # GTest::gtest_main). Runnable single-process AND under mpirun --oversubscribe
 # -np {1,2,4}. Reports actual MPI wall-time per assembly for the per-level
-# MPI_Allgatherv (develop) vs the single plain-MPI gather plus local reorder
-# (optimize).
+# MPI_Allgatherv (develop) vs the single cached gather_replicated (optimize).
 add_executable(
   benchmark_mpi_pipeline
   tests/benchmark_mpi_pipeline.cpp

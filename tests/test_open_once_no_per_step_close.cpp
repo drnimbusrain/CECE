@@ -41,8 +41,8 @@
  *          per-step open/close loop was removed);
  *        - amio_close( / amio_finalize( appear ONLY inside TeardownHandles
  *          (the destructor path);
- *        - GetOrOpenHandleSet uses amio_init / amio_open_dataset on a generated
- *          manifest path and caches into amio_handles_.
+ *        - GetOrOpenHandleSet uses amio_init_from_string /
+ *          amio_open_dataset_from_string and caches into amio_handles_.
  *
  * Together, (A) proves the cache contract that makes reuse-without-reopen
  * possible, and (B) proves the production code is actually wired that way, so
@@ -346,16 +346,17 @@ TEST_F(DriverSourceGuard, CloseAndFinalizeLiveInTeardownPath) {
     EXPECT_EQ(total_finalize, teardown_finalize + open_finalize) << "amio_finalize appears outside the teardown/open-cleanup paths";
 }
 
-// GetOrOpenHandleSet must open via AMIO's file-manifest entry points and cache
-// into amio_handles_ (the lazy-open-once mechanism). (Req 9.1, 2.1, 2.2)
-TEST_F(DriverSourceGuard, GetOrOpenUsesFileManifestEntryPointsAndCaches) {
+// GetOrOpenHandleSet must open via the STRING-based entry points and cache into
+// amio_handles_ (the lazy-open-once mechanism). (Req 9.1, 2.1, 2.2)
+TEST_F(DriverSourceGuard, GetOrOpenUsesStringEntryPointsAndCaches) {
     ASSERT_FALSE(src_.empty());
 
     const std::string body = ExtractMemberBody(src_, "GetOrOpenHandleSet");
     ASSERT_FALSE(body.empty()) << "could not locate GetOrOpenHandleSet function body";
 
-    EXPECT_NE(body.find("amio_init("), std::string::npos) << "GetOrOpenHandleSet must init from a generated manifest path";
-    EXPECT_NE(body.find("amio_open_dataset("), std::string::npos) << "GetOrOpenHandleSet must open the dataset from a generated manifest path";
+    EXPECT_NE(body.find("amio_init_from_string("), std::string::npos) << "GetOrOpenHandleSet must init from an in-memory manifest string";
+    EXPECT_NE(body.find("amio_open_dataset_from_string("), std::string::npos)
+        << "GetOrOpenHandleSet must open the dataset from an in-memory manifest string";
     EXPECT_NE(body.find("amio_handles_"), std::string::npos) << "GetOrOpenHandleSet must cache into amio_handles_";
     // The lazy-open-once hallmark: an early return on a cache hit.
     EXPECT_NE(body.find("amio_handles_.find("), std::string::npos) << "GetOrOpenHandleSet must look up the cache before opening";

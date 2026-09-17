@@ -52,6 +52,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <halo/collectives.hpp>
 #include <halo/communicator.hpp>
 #include <halo/environment.hpp>
 #include <string>
