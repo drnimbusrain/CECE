@@ -52,6 +52,24 @@ Example Ursa workflow that prepares the EarthAccess Python environment and stage
 bash scripts/ursa_earthaccess_staged_run.slurm
 ```
 
+### `ursa_earthaccess_live_run.slurm`
+Example direct-streaming job for Ursa's externally connected `u1-service`
+partition. It requests one task, eight CPUs, and 240 GB explicitly; omitting
+`--mem` can leave a one-CPU job with too little memory for xarray's lazy remote
+NetCDF reads. Ursa limits each user on this partition to 64 cores and/or 250 GB
+of memory, so only one copy of this high-memory job should run at a time.
+
+Prepare `.venv-ursa-earthaccess` and `build-ursa-earthaccess` first, then submit
+from the repository root:
+
+```bash
+sbatch scripts/ursa_earthaccess_live_run.slurm
+sacct -j <job-id> --format=JobID,State,Elapsed,ReqMem,MaxRSS,ExitCode
+```
+
+After a successful representative run, reduce `--mem` to roughly 20% above the
+reported `MaxRSS` if that value is substantially below 240 GB.
+
 ---
 
 ## Configuration Migration
