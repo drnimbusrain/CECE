@@ -914,6 +914,60 @@ class TestStandaloneEarthAccessIngestHelper:
             [local_path], engine="h5netcdf", combine="by_coords"
         )
 
+    def test_helper_retries_transient_http_failure(self):
+        class ClientResponseError(Exception):
+            status = 502
+
+        with patch.object(
+            _standalone_ingest_mod,
+            "_read_stream",
+            side_effect=[ClientResponseError("Bad Gateway"), ["field manifest"]],
+        ) as read_stream, patch.object(
+            _standalone_ingest_mod.time, "sleep"
+        ) as sleep, patch.dict(
+            os.environ,
+            {
+                "CECE_EARTHACCESS_STREAM_ATTEMPTS": "3",
+                "CECE_EARTHACCESS_RETRY_DELAY_SECONDS": "0.25",
+            },
+        ):
+            result = _standalone_ingest_mod._read_stream_with_retries(
+                {"name": "merra2_lai"}, None
+            )
+
+        assert result == ["field manifest"]
+        assert read_stream.call_count == 2
+        sleep.assert_called_once_with(0.25)
+
+    def test_helper_closes_dataset_after_lazy_read_failure(self, tmp_path):
+        class ClientResponseError(Exception):
+            status = 502
+
+        dataset = MagicMock()
+        dataset.__contains__.return_value = True
+        with patch.object(
+            _standalone_ingest_mod, "_open_dataset", return_value=dataset
+        ), patch.object(
+            _standalone_ingest_mod,
+            "_interp_to_target",
+            side_effect=ClientResponseError("Bad Gateway"),
+        ):
+            with pytest.raises(ClientResponseError, match="Bad Gateway"):
+                _standalone_ingest_mod._read_stream(
+                    {
+                        "name": "merra2_lai",
+                        "variables": {"LAI": "leaf_area_index"},
+                    },
+                    None,
+                    np.datetime64("2022-07-03T00:00:00"),
+                    datetime(2022, 7, 3),
+                    LON,
+                    LAT,
+                    tmp_path,
+                )
+
+        dataset.close.assert_called_once_with()
+
     def test_helper_reports_eula_authorization_failure(self, tmp_path):
         from earthaccess.exceptions import EulaNotAccepted
 

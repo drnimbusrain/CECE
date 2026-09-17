@@ -259,6 +259,26 @@ If authorization was completed with a different browser account, sign out of Ear
 
 Use Earthdata Cloud provider IDs in `source: earthaccess` streams. For example, LP DAAC cloud-hosted MODIS collections should use `daac: LPCLOUD`, not the legacy archive provider `LPDAAC_ECS`.
 
+For direct live streaming on a data-transfer node, `cloud_hosted: true` filters
+the CMR search but does not force `earthaccess.open()` to use an `s3://` URL.
+Outside the collection's AWS region, EarthAccess may open the advertised GES
+DISC HTTPS URL instead. CECE retries transient HTTP 429/500/502/503/504 and
+connection/timeout failures by reopening the complete lazy xarray dataset. The
+defaults are four attempts with exponential delays of 2, 4, and 8 seconds. They
+can be adjusted for an unreliable gateway without enabling local staging:
+
+```bash
+export CECE_EARTHACCESS_STREAM_ATTEMPTS=6
+export CECE_EARTHACCESS_RETRY_DELAY_SECONDS=5
+./build-ursa-earthaccess/cece_standalone_driver \
+	examples/cece_config_earthaccess_megan3.yaml
+```
+
+Persistent 502 responses from `data.gesdisc.earthdata.nasa.gov` originate at
+the NASA HTTPS gateway rather than Ursa's scratch filesystem. Verify the URL
+with `curl -I` from the same data-transfer node; use the staged workflow below
+if the gateway remains unavailable after bounded retries.
+
 The current CECE EarthAccess helper opens granules through `xarray+h5netcdf`, so staged streams must resolve to NetCDF4/HDF5-readable data such as MERRA-2 `.nc4` granules. LP DAAC MODIS products such as `MCD15A2H` and `MCD12Q1` are commonly delivered as HDF-EOS `.hdf` granules; those require a separate HDF-EOS conversion path before CECE can consume them as local NetCDF/AMIO streams.
 
 Run CECE on compute nodes with remote fetching disabled and the staged cache enabled:

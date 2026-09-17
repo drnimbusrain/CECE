@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable, List, Optional, Tuple
@@ -399,6 +400,101 @@ def _open_dataset(stream: dict, download_dir: Optional[Path] = None) -> Any:
     return xr.open_mfdataset(file_objs, **dataset_kwargs)
 
 
+def _is_transient_remote_error(exc: BaseException) -> bool:
+    transient_statuses = {429, 500, 502, 503, 504}
+    transient_types = {
+        "ClientConnectionError",
+        "ServerDisconnectedError",
+        "TimeoutError",
+    }
+    visited = set()
+    current: Optional[BaseException] = exc
+    while current is not None and id(current) not in visited:
+        visited.add(id(current))
+        if getattr(current, "status", None) in transient_statuses:
+            return True
+        if current.__class__.__name__ in transient_types:
+            return True
+        current = current.__cause__ or current.__context__
+    return False
+
+
+def _read_stream(
+    stream: dict,
+    download_dir: Optional[Path],
+    timestamp: np.datetime64,
+    timestamp_datetime: datetime,
+    target_lons: np.ndarray,
+    target_lats: np.ndarray,
+    output_dir: Path,
+) -> List[str]:
+    dataset = _open_dataset(stream, download_dir)
+    manifest_lines = []
+    try:
+        for nasa_var, mapping in (stream.get("variables") or {}).items():
+            field_name, transform = _mapping_target_and_transform(mapping)
+            fill_value = _mapping_fill_value(mapping)
+            if nasa_var not in dataset:
+                raise KeyError(
+                    f"Variable {nasa_var!r} not found in earthaccess stream {stream.get('name', '<unnamed>')!r}"
+                )
+            selected = _select_time(dataset[nasa_var], timestamp)
+            values = _interp_to_target(selected, target_lons, target_lats)
+            values = _apply_transform(values, transform)
+            values = _apply_fill_value(values, fill_value, field_name)
+            manifest_lines.append(
+                _write_field(
+                    output_dir,
+                    field_name,
+                    values,
+                    target_lons.size,
+                    target_lats.size,
+                )
+            )
+
+        for field_name, method in (stream.get("derived_variables") or {}).items():
+            if method != "solar_cosine":
+                raise ValueError(
+                    f"Unsupported earthaccess derived variable method: {method}"
+                )
+            values = _solar_cosine(timestamp_datetime, target_lons, target_lats)
+            manifest_lines.append(
+                _write_field(
+                    output_dir,
+                    field_name,
+                    values,
+                    target_lons.size,
+                    target_lats.size,
+                )
+            )
+        return manifest_lines
+    finally:
+        dataset.close()
+
+
+def _read_stream_with_retries(*args: Any, **kwargs: Any) -> List[str]:
+    attempts = max(1, int(os.getenv("CECE_EARTHACCESS_STREAM_ATTEMPTS", "4")))
+    initial_delay = max(
+        0.0, float(os.getenv("CECE_EARTHACCESS_RETRY_DELAY_SECONDS", "2"))
+    )
+    stream = args[0] if args else kwargs["stream"]
+    for attempt in range(1, attempts + 1):
+        try:
+            return _read_stream(*args, **kwargs)
+        except Exception as exc:
+            if attempt == attempts or not _is_transient_remote_error(exc):
+                raise
+            delay = initial_delay * (2 ** (attempt - 1))
+            print(
+                f"Transient EarthAccess failure for stream {stream.get('name', '<unnamed>')!r} "
+                f"(attempt {attempt}/{attempts}, {exc.__class__.__name__}: {exc}); "
+                f"reopening in {delay:g} seconds"
+            )
+            time.sleep(delay)
+
+    raise AssertionError("unreachable")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True, type=Path)
@@ -434,46 +530,17 @@ def main() -> int:
             stream_download_dir = args.download_dir / _safe_name(
                 stream.get("name", "stream")
             )
-        dataset = _open_dataset(stream, stream_download_dir)
-        try:
-            for nasa_var, mapping in (stream.get("variables") or {}).items():
-                field_name, transform = _mapping_target_and_transform(mapping)
-                fill_value = _mapping_fill_value(mapping)
-                if nasa_var not in dataset:
-                    raise KeyError(
-                        f"Variable {nasa_var!r} not found in earthaccess stream {stream.get('name', '<unnamed>')!r}"
-                    )
-                selected = _select_time(dataset[nasa_var], timestamp)
-                values = _interp_to_target(selected, target_lons, target_lats)
-                values = _apply_transform(values, transform)
-                values = _apply_fill_value(values, fill_value, field_name)
-                manifest_lines.append(
-                    _write_field(
-                        args.output_dir,
-                        field_name,
-                        values,
-                        target_lons.size,
-                        target_lats.size,
-                    )
-                )
-
-            for field_name, method in (stream.get("derived_variables") or {}).items():
-                if method != "solar_cosine":
-                    raise ValueError(
-                        f"Unsupported earthaccess derived variable method: {method}"
-                    )
-                values = _solar_cosine(timestamp_datetime, target_lons, target_lats)
-                manifest_lines.append(
-                    _write_field(
-                        args.output_dir,
-                        field_name,
-                        values,
-                        target_lons.size,
-                        target_lats.size,
-                    )
-                )
-        finally:
-            dataset.close()
+        manifest_lines.extend(
+            _read_stream_with_retries(
+                stream,
+                stream_download_dir,
+                timestamp,
+                timestamp_datetime,
+                target_lons,
+                target_lats,
+                args.output_dir,
+            )
+        )
 
     (args.output_dir / "manifest.txt").write_text(
         "\n".join(manifest_lines) + ("\n" if manifest_lines else "")
