@@ -162,6 +162,11 @@ output:
   enabled: true
   directory: "./output/earthaccess_megan3"
   filename_pattern: "cece_earthaccess_{YYYY}{MM}{DD}_{HH}{mm}{ss}.nc"
+  # Output writer tuning for high-resolution grids (e.g., global 0.1 degree).
+  amio_worker_threads: 2
+  amio_staging_buffer_count: 2
+  amio_staging_buffer_capacity_bytes: 67108864 # 64 MiB
+  amio_staging_timeout_ms: 60000
   fields:
     - name: MEGAN_ISOP
       attributes:

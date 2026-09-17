@@ -270,6 +270,18 @@ unset EARTHDATA_TOKEN
 srun -n 1 ./build-ursa-earthaccess/cece_standalone_driver examples/cece_config_earthaccess_megan3.yaml
 ```
 
+For a global 0.1-degree output grid (`3600x1800`), one surface `float64` field is approximately 49.4 MiB. Configure output AMIO independently from input AMIO:
+
+```yaml
+output:
+	amio_worker_threads: 2
+	amio_staging_buffer_count: 2
+	amio_staging_buffer_capacity_bytes: 67108864 # 64 MiB
+	amio_staging_timeout_ms: 60000
+```
+
+The writer automatically raises buffer capacity when a field is larger than the configured minimum, up to AMIO's 1 GiB per-buffer limit. It waits for every asynchronous coordinate and field write before reusing staging capacity. Increasing `driver.amio_staging_buffer_count` affects input streams and does not tune output buffers.
+
 The staged directory contains a shared `granules/` download cache used during staging, plus one subdirectory per model timestep named `step_0`, `step_1`, and so on. Each `step_N` directory contains only the timestep-specific `manifest.txt`, coordinate references (`target_lons.txt`, `target_lats.txt`), and raw `*.f64` 2D field arrays. The staging helper downloads protected Earthdata granules once into the shared `granules/` cache before opening them with xarray, which avoids duplicate downloads and remote fsspec streaming failures. When `CECE_EARTHACCESS_STAGE_DIR` is set, the native driver reads the staged `manifest.txt` and `*.f64` files directly from `step_N` and does not invoke the EarthAccess helper or open network connections.
 
 For a complete Ursa example that combines login-node staging with a compute-node Slurm run, use:
