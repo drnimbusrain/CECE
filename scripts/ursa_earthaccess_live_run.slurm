@@ -5,7 +5,7 @@
 #SBATCH --qos=windfall
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=64
 #SBATCH --mem=240G
 #SBATCH --time=06:00:00
 #SBATCH --output=cece-earthaccess-live.%j.out
@@ -44,7 +44,8 @@ if [[ ! -x "${driver_bin}" ]]; then
   exit 2
 fi
 
-export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK}"
+application_threads=8
+export OMP_NUM_THREADS="${application_threads}"
 export OMP_PROC_BIND=spread
 export OMP_PLACES=cores
 export MALLOC_ARENA_MAX=2
@@ -61,7 +62,11 @@ config="${CECE_CONFIG:-examples/cece_config_earthaccess_megan3.yaml}"
 
 echo "Starting CECE direct EarthAccess stream"
 echo "Host: $(hostname)"
-echo "CPUs: ${SLURM_CPUS_PER_TASK}; memory: ${SLURM_MEM_PER_NODE:-unknown} MiB"
+echo "Allocated CPUs: ${SLURM_JOB_CPUS_PER_NODE:-unknown}"
+echo "Application threads: ${application_threads}; memory: ${SLURM_MEM_PER_NODE:-unknown} MiB"
 echo "Config: ${config}"
 
-srun --cpu-bind=cores "${driver_bin}" "${config}"
+# Ursa charges enough CPUs to satisfy the requested memory even though CECE uses
+# only eight application threads. The 64-CPU request keeps Slurm's CPU variables
+# consistent for launchers used by linked runtime libraries.
+"${driver_bin}" "${config}"

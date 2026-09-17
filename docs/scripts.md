@@ -54,10 +54,11 @@ bash scripts/ursa_earthaccess_staged_run.slurm
 
 ### `ursa_earthaccess_live_run.slurm`
 Example direct-streaming job for Ursa's externally connected `u1-service`
-partition. It requests one task, eight CPUs, and 240 GB explicitly; omitting
-`--mem` can leave a one-CPU job with too little memory for xarray's lazy remote
-NetCDF reads. Ursa limits each user on this partition to 64 cores and/or 250 GB
-of memory, so only one copy of this high-memory job should run at a time.
+partition. It requests one task, 64 allocated CPUs, and 240 GB explicitly while
+limiting CECE to eight application threads. Omitting `--mem` may leave the job
+with too little memory for xarray's lazy remote NetCDF reads. Ursa limits each
+user on this partition to 64 cores and/or 250 GB of memory, so this request uses
+the user's full CPU allowance and only one copy can run at a time.
 
 Prepare `.venv-ursa-earthaccess` and `build-ursa-earthaccess` first, then submit
 from the repository root:
@@ -66,6 +67,13 @@ from the repository root:
 sbatch scripts/ursa_earthaccess_live_run.slurm
 sacct -j <job-id> --format=JobID,State,Elapsed,ReqMem,MaxRSS,ExitCode
 ```
+
+Ursa enforces an effective maximum memory per allocated CPU. A 240 GB request
+with only eight requested CPUs was normalized to approximately 63 CPUs, leaving
+`SLURM_CPUS_PER_TASK=63` in conflict with `SLURM_TRES_PER_TASK=cpu=8`. Requesting
+64 CPUs explicitly keeps those Slurm values consistent. This is accounting and
+scheduling capacity; `OMP_NUM_THREADS=8` still limits application concurrency.
+CECE YAML does not control Slurm task allocation.
 
 After a successful representative run, reduce `--mem` to roughly 20% above the
 reported `MaxRSS` if that value is substantially below 240 GB.
