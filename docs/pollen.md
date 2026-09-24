@@ -78,11 +78,41 @@ $$m_{grain}=\frac{\pi}{6}d^3\rho.$$
 
 ## Fields
 
-Required inputs are `day_of_year`, `vegetation_fraction`, `annual_pollen_production`, `wind_speed`, `convective_velocity`, `precipitation`, `relative_humidity`, `temperature`, and `sunshine_hours`. Optional spatial inputs `season_start_doy` and `season_end_doy` override configured constants. `autumn_accumulated_forcing` is required only when the autumn trigger is enabled.
+Required inputs are `day_of_year`, `annual_pollen_production`, `wind_speed`, `convective_velocity`, `precipitation`, `relative_humidity`, `temperature`, and `sunshine_hours`. Supply either a spatial `vegetation_fraction` input or `vegetation_fraction_default`; the configured default is used only when the field is absent. Optional spatial inputs `season_start_doy` and `season_end_doy` override configured constants. `autumn_accumulated_forcing` is required only when the autumn trigger is enabled.
 
 Required outputs are `pollen_number_emissions` and `pollen_mass_emissions`. Optional outputs are `pollen_diameter`, `pollen_density`, and `pollen_phenology_forcing`. All emissions are written only to the surface layer.
 
 Use `input_mapping` and `output_mapping` to bind taxon-specific names. See `examples/cece_config_pollen.yaml` for Artemisia, chenopod, and total-pollen mappings and CTM metadata.
+
+### Vegetation Fraction Semantics
+
+The pollen-pool equation multiplies annual production by the taxon's vegetation fraction:
+
+$$E_i(t)=f_i P_{annual,i}\exp\left[-\frac{(t-\mu)^2}{2\delta^2}\right].$$
+
+`vegetation_fraction_default: 1.0` sets $f_i=1$ only when no `vegetation_fraction` input field is mapped or available. It means "do not apply an additional vegetation scaling," not "the entire grid cell is covered by this plant."
+
+Use this setting when `annual_pollen_production` already represents production per total grid-cell area and has already incorporated the taxon's land-cover or plant-functional-type fraction:
+
+```yaml
+options:
+  vegetation_fraction_default: 1.0
+  input_mapping:
+    annual_pollen_production: RF_MUGWORT_PANNUAL
+```
+
+If `annual_pollen_production` instead represents production per unit vegetated area, map a dimensionless grid-cell vegetation fraction in `[0, 1]`:
+
+```yaml
+options:
+  input_mapping:
+    annual_pollen_production: MUGWORT_PRODUCTION_PER_VEGETATED_AREA
+    vegetation_fraction: MUGWORT_GRIDCELL_FRACTION
+```
+
+For example, a value of `0.25` applies pollen production to 25% of the grid cell. A mapped field takes precedence over `vegetation_fraction_default`.
+
+Do not apply vegetation fraction twice. If the RF target or predictor preprocessing already multiplied production by land-cover fraction, also mapping that fraction in CECE would underestimate the pool by another factor of $f_i$. Conversely, using `vegetation_fraction_default: 1.0` with production defined per vegetated area treats the production as grid-cell-wide and overestimates emissions. Record whether each RF product is `per_grid_cell_area` or `per_vegetated_area` in its NetCDF metadata and training provenance.
 
 ## RF Mapping Tool
 
