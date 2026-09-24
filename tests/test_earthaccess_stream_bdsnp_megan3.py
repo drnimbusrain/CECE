@@ -791,6 +791,10 @@ class TestStandaloneEarthAccessIngestHelper:
 
         assert np.array_equal(filled, [[1.0, 0.0], [0.0, 2.0]])
 
+    def test_helper_reads_variable_scale(self):
+        assert _standalone_ingest_mod._mapping_scale({"scale": 3600.0}) == 3600.0
+        assert _standalone_ingest_mod._mapping_scale("temperature") == 1.0
+
     def test_helper_without_fill_value_remains_strict(self):
         values = np.array([[1.0, np.nan]], dtype=np.float64)
         unchanged = _standalone_ingest_mod._apply_fill_value(
@@ -824,6 +828,34 @@ class TestStandaloneEarthAccessIngestHelper:
 
         assert values.shape == (NY, NX)
         assert np.all((values >= 0.0) & (values <= 1.0))
+
+    def test_helper_derives_fractional_day_of_year(self):
+        values = _standalone_ingest_mod._fractional_day_of_year(
+            datetime(2025, 8, 25, 12, 0, 0), 3, 2
+        )
+
+        assert values.shape == (2, 3)
+        assert np.all(values == pytest.approx(237.5))
+
+    def test_helper_derives_daily_sunshine_duration(self):
+        values = _standalone_ingest_mod._sunshine_hours(
+            datetime(2025, 3, 20, 12, 0, 0), np.array([-45.0, 0.0, 45.0]), 2
+        )
+
+        assert values.shape == (3, 2)
+        assert np.allclose(values, 12.0, atol=0.15)
+
+    def test_helper_derives_relative_humidity(self):
+        temperature = np.full((2, 2), 293.15)
+        specific_humidity = np.full((2, 2), 0.0073)
+        pressure = np.full((2, 2), 101325.0)
+
+        values = _standalone_ingest_mod._relative_humidity_percent(
+            temperature, specific_humidity, pressure
+        )
+
+        assert values.shape == (2, 2)
+        assert np.allclose(values, 50.0, atol=2.0)
 
     def test_helper_maps_lpdaac_cloud_provider(self):
         stream = {"cloud_hosted": True, "daac": "LPDAAC_ECS"}
@@ -967,6 +999,71 @@ class TestStandaloneEarthAccessIngestHelper:
                 )
 
         dataset.close.assert_called_once_with()
+
+    def test_helper_builds_pollen_meteorology_fields(self, tmp_path):
+        timestamp = np.datetime64("2025-08-25T12:00:00")
+        coordinates = {"time": [timestamp], "lat": LAT, "lon": LON}
+        shape = (1, NY, NX)
+        dataset = xr.Dataset(
+            {
+                "T2M": (("time", "lat", "lon"), np.full(shape, 293.15)),
+                "QV2M": (("time", "lat", "lon"), np.full(shape, 0.0073)),
+                "PS": (("time", "lat", "lon"), np.full(shape, 101325.0)),
+                "PRECTOTCORR": (("time", "lat", "lon"), np.full(shape, 1.0e-4)),
+            },
+            coords=coordinates,
+        )
+        written = {}
+
+        def capture(_output_dir, field_name, values, _nx, _ny):
+            written[field_name] = values
+            return field_name
+
+        stream = {
+            "name": "merra2_pollen",
+            "variables": {
+                "T2M": "MERRA2_T2M",
+                "PRECTOTCORR": {
+                    "model": "MERRA2_PRECIP_MM_INTERVAL",
+                    "scale": 3600.0,
+                },
+            },
+            "derived_variables": {
+                "DAY_OF_YEAR": "day_of_year",
+                "SUNSHINE_HOURS": "sunshine_hours",
+                "MERRA2_RH2M": {
+                    "method": "relative_humidity",
+                    "temperature": "T2M",
+                    "specific_humidity": "QV2M",
+                    "pressure": "PS",
+                },
+            },
+        }
+
+        with patch.object(
+            _standalone_ingest_mod, "_open_dataset", return_value=dataset
+        ), patch.object(_standalone_ingest_mod, "_write_field", side_effect=capture):
+            fields = _standalone_ingest_mod._read_stream(
+                stream,
+                None,
+                timestamp,
+                datetime(2025, 8, 25, 12, 0, 0),
+                LON,
+                LAT,
+                tmp_path,
+            )
+
+        assert set(fields) == {
+            "MERRA2_T2M",
+            "MERRA2_PRECIP_MM_INTERVAL",
+            "DAY_OF_YEAR",
+            "SUNSHINE_HOURS",
+            "MERRA2_RH2M",
+        }
+        assert np.allclose(written["MERRA2_PRECIP_MM_INTERVAL"], 0.36)
+        assert np.allclose(written["DAY_OF_YEAR"], 237.5)
+        assert np.all((written["SUNSHINE_HOURS"] >= 0.0) & (written["SUNSHINE_HOURS"] <= 24.0))
+        assert np.allclose(written["MERRA2_RH2M"], 50.0, atol=2.0)
 
     def test_helper_reports_eula_authorization_failure(self, tmp_path):
         from earthaccess.exceptions import EulaNotAccepted

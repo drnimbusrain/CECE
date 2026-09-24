@@ -14,6 +14,7 @@ The `examples/` directory contains several YAML configuration files:
 -   `cece_config_ex6.yaml`: Handling non-separated inventories
 -   `cece_config_advanced.yaml`: **NEW** - Comprehensive example demonstrating advanced Stacking Engine features
 -   `cece_config_earthaccess.yaml`: Cloud-native NASA Earthdata streaming with `earthaccess`
+-   `cece_config_earthaccess_pollen.yaml`: RF pollen climatology with online Earthaccess MERRA-2 meteorology
 
 ### Advanced Example Highlights
 
@@ -43,6 +44,7 @@ For complete technical details about how these features work, see the [Stacking 
 | ex6 | (varies) | Multiple | Non-separated inventory handling |
 | **advanced** | **144×91** | **CO, NOx, Isoprene** | **All advanced features demonstrated** |
 | earthaccess | HEMCO 4×5 | Isoprene, soil NO, dust | NASA Earthdata cloud streams via `earthaccess` |
+| earthaccess pollen | MERRA-2 0.625°×0.5° | Mugwort pollen | Annual RF source climatology plus online MERRA-2 release meteorology |
 
 ---
 
