@@ -37,7 +37,24 @@ double autumn_forcing(AutumnPhenologyMethod method, double temperature_c, double
 
 static PhysicsRegistration<PollenScheme> register_scheme("pollen");
 static PhysicsRegistration<PollenScheme> register_artemisia_scheme("pollen_artemisia");
+static PhysicsRegistration<PollenScheme> register_mugwort_scheme("pollen_mugwort");
 static PhysicsRegistration<PollenScheme> register_chenopod_scheme("pollen_chenopod");
+static PhysicsRegistration<PollenScheme> register_ragweed_scheme("pollen_ragweed");
+static PhysicsRegistration<PollenScheme> register_grass_scheme("pollen_grass");
+static PhysicsRegistration<PollenScheme> register_alder_scheme("pollen_alder");
+static PhysicsRegistration<PollenScheme> register_ash_scheme("pollen_ash");
+static PhysicsRegistration<PollenScheme> register_birch_scheme("pollen_birch");
+static PhysicsRegistration<PollenScheme> register_cottonwood_scheme("pollen_cottonwood");
+static PhysicsRegistration<PollenScheme> register_cypress_scheme("pollen_cypress");
+static PhysicsRegistration<PollenScheme> register_elm_scheme("pollen_elm");
+static PhysicsRegistration<PollenScheme> register_hazel_scheme("pollen_hazel");
+static PhysicsRegistration<PollenScheme> register_juniper_scheme("pollen_juniper");
+static PhysicsRegistration<PollenScheme> register_maple_scheme("pollen_maple");
+static PhysicsRegistration<PollenScheme> register_oak_scheme("pollen_oak");
+static PhysicsRegistration<PollenScheme> register_olive_scheme("pollen_olive");
+static PhysicsRegistration<PollenScheme> register_pine_scheme("pollen_pine");
+static PhysicsRegistration<PollenScheme> register_plane_scheme("pollen_plane");
+static PhysicsRegistration<PollenScheme> register_nettle_scheme("pollen_nettle");
 static PhysicsRegistration<PollenScheme> register_total_scheme("pollen_total");
 
 void PollenScheme::Initialize(const conf::Value& config, CeceDiagnosticManager* diag_manager) {

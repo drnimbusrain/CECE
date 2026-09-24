@@ -365,6 +365,20 @@ TEST_F(PhysicsTest, PollenUsesConfiguredVegetationFractionForPremaskedClimatolog
     EXPECT_GT(export_state.fields["pollen_number_emissions"].view_host()(0, 0, 0), 0.0);
 }
 
+TEST_F(PhysicsTest, PollenTaxonAliasesAreRegistered) {
+    const std::vector<std::string> aliases = {
+        "pollen",       "pollen_artemisia", "pollen_mugwort", "pollen_chenopod", "pollen_ragweed", "pollen_grass", "pollen_alder",
+        "pollen_ash",   "pollen_birch",     "pollen_cottonwood", "pollen_cypress", "pollen_elm",     "pollen_hazel", "pollen_juniper",
+        "pollen_maple", "pollen_oak",       "pollen_olive",   "pollen_pine",     "pollen_plane",   "pollen_nettle", "pollen_total",
+    };
+
+    for (const auto& alias : aliases) {
+        PhysicsSchemeConfig cfg;
+        cfg.name = alias;
+        EXPECT_NE(PhysicsFactory::CreateScheme(cfg), nullptr) << alias;
+    }
+}
+
 TEST_F(PhysicsTest, MeganSensitivity) {
     PhysicsSchemeConfig cfg;
     cfg.name = "megan";
