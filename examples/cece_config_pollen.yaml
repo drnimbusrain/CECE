@@ -119,24 +119,24 @@ cece_data:
       tintalgo: linear
       mapalgo: bilinear
       variables:
-        - {file: artemisia_pannual, model: RF_ARTEMISIA_PANNUAL}
-        - {file: chenopod_pannual, model: RF_CHENOPOD_PANNUAL}
-        - {file: total_pannual, model: RF_TOTAL_PANNUAL}
-        - {file: c3_fraction, model: PFT_C3_FRACTION}
-        - {file: grass_fraction, model: PFT_GRASS_FRACTION}
-        - {file: artemisia_sdoy, model: ARTEMISIA_SDOY}
-        - {file: artemisia_edoy, model: ARTEMISIA_EDOY}
-        - {file: chenopod_sdoy, model: CHENOPOD_SDOY}
-        - {file: chenopod_edoy, model: CHENOPOD_EDOY}
-        - {file: total_sdoy, model: TOTAL_SDOY}
-        - {file: total_edoy, model: TOTAL_EDOY}
-        - {file: day_of_year, model: DAY_OF_YEAR}
-        - {file: temperature_2m, model: T2M}
-        - {file: wind_speed_10m, model: U10M}
-        - {file: convective_velocity, model: UCONV}
-        - {file: precipitation_interval, model: PRECIP_MM_INTERVAL}
-        - {file: relative_humidity_2m, model: RH2M}
-        - {file: sunshine_hours, model: SUNSHINE_HOURS}
+        - { file: artemisia_pannual, model: RF_ARTEMISIA_PANNUAL }
+        - { file: chenopod_pannual, model: RF_CHENOPOD_PANNUAL }
+        - { file: total_pannual, model: RF_TOTAL_PANNUAL }
+        - { file: c3_fraction, model: PFT_C3_FRACTION }
+        - { file: grass_fraction, model: PFT_GRASS_FRACTION }
+        - { file: artemisia_sdoy, model: ARTEMISIA_SDOY }
+        - { file: artemisia_edoy, model: ARTEMISIA_EDOY }
+        - { file: chenopod_sdoy, model: CHENOPOD_SDOY }
+        - { file: chenopod_edoy, model: CHENOPOD_EDOY }
+        - { file: total_sdoy, model: TOTAL_SDOY }
+        - { file: total_edoy, model: TOTAL_EDOY }
+        - { file: day_of_year, model: DAY_OF_YEAR }
+        - { file: temperature_2m, model: T2M }
+        - { file: wind_speed_10m, model: U10M }
+        - { file: convective_velocity, model: UCONV }
+        - { file: precipitation_interval, model: PRECIP_MM_INTERVAL }
+        - { file: relative_humidity_2m, model: RH2M }
+        - { file: sunshine_hours, model: SUNSHINE_HOURS }
 
 output:
   enabled: true
@@ -144,15 +144,60 @@ output:
   filename_pattern: "cece_pollen_{YYYY}{MM}{DD}_{HH}{mm}{ss}.nc"
   frequency_steps: 1
   fields:
-    - {name: POLLEN_ARTEMISIA_NUM, attributes: {units: "grains m-2 s-1", ctm_role: "inert_primary_coarse_pm"}}
-    - {name: POLLEN_ARTEMISIA_MASS, attributes: {units: "kg m-2 s-1", ctm_species: "POLLEN_ARTEMISIA"}}
-    - {name: POLLEN_ARTEMISIA_DIAMETER, attributes: {units: "m", long_name: "artemisia_pollen_geometric_diameter"}}
-    - {name: POLLEN_ARTEMISIA_DENSITY, attributes: {units: "kg m-3", long_name: "artemisia_pollen_particle_density"}}
-    - {name: POLLEN_CHENOPOD_NUM, attributes: {units: "grains m-2 s-1", ctm_role: "inert_primary_coarse_pm"}}
-    - {name: POLLEN_CHENOPOD_MASS, attributes: {units: "kg m-2 s-1", ctm_species: "POLLEN_CHENOPOD"}}
-    - {name: POLLEN_CHENOPOD_DIAMETER, attributes: {units: "m", long_name: "chenopod_pollen_geometric_diameter"}}
-    - {name: POLLEN_CHENOPOD_DENSITY, attributes: {units: "kg m-3", long_name: "chenopod_pollen_particle_density"}}
-    - {name: POLLEN_TOTAL_NUM, attributes: {units: "grains m-2 s-1", ctm_role: "inert_primary_coarse_pm"}}
-    - {name: POLLEN_TOTAL_MASS, attributes: {units: "kg m-2 s-1", ctm_species: "POLLEN_TOTAL"}}
-    - {name: POLLEN_TOTAL_DIAMETER, attributes: {units: "m", long_name: "total_pollen_geometric_diameter"}}
-    - {name: POLLEN_TOTAL_DENSITY, attributes: {units: "kg m-3", long_name: "total_pollen_particle_density"}}
+    - {
+        name: POLLEN_ARTEMISIA_NUM,
+        attributes:
+          { units: "grains m-2 s-1", ctm_role: "inert_primary_coarse_pm" },
+      }
+    - {
+        name: POLLEN_ARTEMISIA_MASS,
+        attributes: { units: "kg m-2 s-1", ctm_species: "POLLEN_ARTEMISIA" },
+      }
+    - {
+        name: POLLEN_ARTEMISIA_DIAMETER,
+        attributes:
+          { units: "m", long_name: "artemisia_pollen_geometric_diameter" },
+      }
+    - {
+        name: POLLEN_ARTEMISIA_DENSITY,
+        attributes:
+          { units: "kg m-3", long_name: "artemisia_pollen_particle_density" },
+      }
+    - {
+        name: POLLEN_CHENOPOD_NUM,
+        attributes:
+          { units: "grains m-2 s-1", ctm_role: "inert_primary_coarse_pm" },
+      }
+    - {
+        name: POLLEN_CHENOPOD_MASS,
+        attributes: { units: "kg m-2 s-1", ctm_species: "POLLEN_CHENOPOD" },
+      }
+    - {
+        name: POLLEN_CHENOPOD_DIAMETER,
+        attributes:
+          { units: "m", long_name: "chenopod_pollen_geometric_diameter" },
+      }
+    - {
+        name: POLLEN_CHENOPOD_DENSITY,
+        attributes:
+          { units: "kg m-3", long_name: "chenopod_pollen_particle_density" },
+      }
+    - {
+        name: POLLEN_TOTAL_NUM,
+        attributes:
+          { units: "grains m-2 s-1", ctm_role: "inert_primary_coarse_pm" },
+      }
+    - {
+        name: POLLEN_TOTAL_MASS,
+        attributes: { units: "kg m-2 s-1", ctm_species: "POLLEN_TOTAL" },
+      }
+    - {
+        name: POLLEN_TOTAL_DIAMETER,
+        attributes:
+          { units: "m", long_name: "total_pollen_geometric_diameter" },
+      }
+    - {
+        name: POLLEN_TOTAL_DENSITY,
+        attributes:
+          { units: "kg m-3", long_name: "total_pollen_particle_density" },
+      }

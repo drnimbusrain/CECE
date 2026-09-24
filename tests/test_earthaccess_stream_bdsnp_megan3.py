@@ -1062,7 +1062,9 @@ class TestStandaloneEarthAccessIngestHelper:
         }
         assert np.allclose(written["MERRA2_PRECIP_MM_INTERVAL"], 0.36)
         assert np.allclose(written["DAY_OF_YEAR"], 237.5)
-        assert np.all((written["SUNSHINE_HOURS"] >= 0.0) & (written["SUNSHINE_HOURS"] <= 24.0))
+        assert np.all(
+            (written["SUNSHINE_HOURS"] >= 0.0) & (written["SUNSHINE_HOURS"] <= 24.0)
+        )
         assert np.allclose(written["MERRA2_RH2M"], 50.0, atol=2.0)
 
     def test_helper_reports_eula_authorization_failure(self, tmp_path):

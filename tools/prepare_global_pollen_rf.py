@@ -26,31 +26,65 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    download = subparsers.add_parser("download-merra2", help="Download one year from NASA Earthdata")
+    download = subparsers.add_parser(
+        "download-merra2", help="Download one year from NASA Earthdata"
+    )
     download.add_argument("--year", type=int, default=2025)
-    download.add_argument("--output-dir", type=Path, default=Path("data/pollen/merra2/2025"))
+    download.add_argument(
+        "--output-dir", type=Path, default=Path("data/pollen/merra2/2025")
+    )
 
-    ambee = subparsers.add_parser("download-ambee", help="Download historical pollen at configured training sites")
-    ambee.add_argument("sites_csv", type=Path, help="CSV with site_id, latitude, and longitude")
+    ambee = subparsers.add_parser(
+        "download-ambee", help="Download historical pollen at configured training sites"
+    )
+    ambee.add_argument(
+        "sites_csv", type=Path, help="CSV with site_id, latitude, and longitude"
+    )
     ambee.add_argument("output_csv", type=Path)
     ambee.add_argument("--year", type=int, default=2025)
     ambee.add_argument("--taxon", required=True)
-    ambee.add_argument("--records-path", default="data", help="Dot path to the response record list")
-    ambee.add_argument("--timestamp-path", default="updatedAt", help="Dot path within each record")
-    ambee.add_argument("--count-path", required=True, help="Dot path within each record to the numeric pollen count")
+    ambee.add_argument(
+        "--records-path", default="data", help="Dot path to the response record list"
+    )
+    ambee.add_argument(
+        "--timestamp-path", default="updatedAt", help="Dot path within each record"
+    )
+    ambee.add_argument(
+        "--count-path",
+        required=True,
+        help="Dot path within each record to the numeric pollen count",
+    )
     ambee.add_argument("--chunk-days", type=int, default=7)
     ambee.add_argument("--request-delay-seconds", type=float, default=0.25)
 
-    aggregate = subparsers.add_parser("aggregate-merra2", help="Aggregate downloaded hourly MERRA-2 files")
+    aggregate = subparsers.add_parser(
+        "aggregate-merra2", help="Aggregate downloaded hourly MERRA-2 files"
+    )
     aggregate.add_argument("--year", type=int, default=2025)
-    aggregate.add_argument("--surface-glob", default="data/pollen/merra2/2025/MERRA2_*tavg1_2d_slv_Nx*.nc4")
-    aggregate.add_argument("--radiation-glob", default="data/pollen/merra2/2025/MERRA2_*tavg1_2d_rad_Nx*.nc4")
-    aggregate.add_argument("--constant-glob", default="data/pollen/merra2/2025/MERRA2_*const_2d_asm_Nx*.nc4")
-    aggregate.add_argument("--output", type=Path, default=Path("data/pollen/merra2_annual_predictors_2025.nc"))
+    aggregate.add_argument(
+        "--surface-glob", default="data/pollen/merra2/2025/MERRA2_*tavg1_2d_slv_Nx*.nc4"
+    )
+    aggregate.add_argument(
+        "--radiation-glob",
+        default="data/pollen/merra2/2025/MERRA2_*tavg1_2d_rad_Nx*.nc4",
+    )
+    aggregate.add_argument(
+        "--constant-glob",
+        default="data/pollen/merra2/2025/MERRA2_*const_2d_asm_Nx*.nc4",
+    )
+    aggregate.add_argument(
+        "--output",
+        type=Path,
+        default=Path("data/pollen/merra2_annual_predictors_2025.nc"),
+    )
     aggregate.add_argument("--sunshine-threshold-wm2", type=float, default=120.0)
 
-    training = subparsers.add_parser("prepare-training", help="Join pollen observations to annual predictors")
-    training.add_argument("pollen_csv", type=Path, help="Authorized historical pollen export")
+    training = subparsers.add_parser(
+        "prepare-training", help="Join pollen observations to annual predictors"
+    )
+    training.add_argument(
+        "pollen_csv", type=Path, help="Authorized historical pollen export"
+    )
     training.add_argument("predictor_netcdf", type=Path)
     training.add_argument("output_csv", type=Path)
     training.add_argument("--year", type=int, default=2025)
@@ -75,7 +109,9 @@ def download_merra2(year: int, output_dir: Path) -> None:
     try:
         import earthaccess
     except ImportError as exc:
-        raise RuntimeError("Install CECE's pollen dependencies: python -m pip install -e '.[pollen]'") from exc
+        raise RuntimeError(
+            "Install CECE's pollen dependencies: python -m pip install -e '.[pollen]'"
+        ) from exc
 
     output_dir.mkdir(parents=True, exist_ok=True)
     earthaccess.login()
@@ -83,7 +119,9 @@ def download_merra2(year: int, output_dir: Path) -> None:
     for short_name in (SURFACE_COLLECTION, RADIATION_COLLECTION):
         results = earthaccess.search_data(short_name=short_name, temporal=temporal)
         if not results:
-            raise RuntimeError(f"NASA Earthdata returned no {short_name} granules for {year}")
+            raise RuntimeError(
+                f"NASA Earthdata returned no {short_name} granules for {year}"
+            )
         earthaccess.download(results, str(output_dir))
     constants = earthaccess.search_data(short_name=CONSTANT_COLLECTION)
     if not constants:
@@ -103,9 +141,13 @@ def nested_value(value: object, path: str) -> object:
 def download_ambee(args: argparse.Namespace) -> None:
     api_key = os.environ.get("AMBEE_API_KEY")
     if not api_key:
-        raise RuntimeError("Set AMBEE_API_KEY in the shell; never pass API keys as command arguments")
+        raise RuntimeError(
+            "Set AMBEE_API_KEY in the shell; never pass API keys as command arguments"
+        )
     if args.chunk_days <= 0 or args.request_delay_seconds < 0.0:
-        raise ValueError("Ambee chunk days must be positive and request delay must be non-negative")
+        raise ValueError(
+            "Ambee chunk days must be positive and request delay must be non-negative"
+        )
     sites = pd.read_csv(args.sites_csv)
     required = {"site_id", "latitude", "longitude"}
     missing = sorted(required - set(sites.columns))
@@ -136,7 +178,9 @@ def download_ambee(args: argparse.Namespace) -> None:
             payload = response.json()
             records = nested_value(payload, args.records_path)
             if not isinstance(records, list):
-                raise TypeError(f"Ambee --records-path '{args.records_path}' must resolve to a list")
+                raise TypeError(
+                    f"Ambee --records-path '{args.records_path}' must resolve to a list"
+                )
             for record in records:
                 rows.append(
                     {
@@ -152,7 +196,9 @@ def download_ambee(args: argparse.Namespace) -> None:
             if args.request_delay_seconds:
                 time.sleep(args.request_delay_seconds)
 
-    output = pd.DataFrame(rows).drop_duplicates(subset=["site_id", "timestamp", "taxon"])
+    output = pd.DataFrame(rows).drop_duplicates(
+        subset=["site_id", "timestamp", "taxon"]
+    )
     if output.empty:
         raise RuntimeError("Ambee returned no records for the requested sites and year")
     args.output_csv.parent.mkdir(parents=True, exist_ok=True)
@@ -166,28 +212,49 @@ def time_step_seconds(dataset: xr.Dataset) -> float:
     return float(delta)
 
 
-def relative_humidity_percent(temperature: xr.DataArray, specific_humidity: xr.DataArray, pressure: xr.DataArray) -> xr.DataArray:
+def relative_humidity_percent(
+    temperature: xr.DataArray, specific_humidity: xr.DataArray, pressure: xr.DataArray
+) -> xr.DataArray:
     temperature_c = temperature - 273.15
     vapor_pressure = specific_humidity * pressure / (0.622 + 0.378 * specific_humidity)
-    saturation_pressure = 611.2 * np.exp(17.67 * temperature_c / (temperature_c + 243.5))
+    saturation_pressure = 611.2 * np.exp(
+        17.67 * temperature_c / (temperature_c + 243.5)
+    )
     return (100.0 * vapor_pressure / saturation_pressure).clip(0.0, 100.0)
 
 
-def aggregate_merra2(surface_glob: str, radiation_glob: str, constant_glob: str, output: Path, year: int, sunshine_threshold: float) -> None:
+def aggregate_merra2(
+    surface_glob: str,
+    radiation_glob: str,
+    constant_glob: str,
+    output: Path,
+    year: int,
+    sunshine_threshold: float,
+) -> None:
     surface_files = sorted(Path(path) for path in glob.glob(surface_glob))
     radiation_files = sorted(Path(path) for path in glob.glob(radiation_glob))
     constant_files = sorted(Path(path) for path in glob.glob(constant_glob))
     if not surface_files or not radiation_files or not constant_files:
-        raise FileNotFoundError("MERRA-2 surface, radiation, and constant files are required; run download-merra2 first")
+        raise FileNotFoundError(
+            "MERRA-2 surface, radiation, and constant files are required; run download-merra2 first"
+        )
 
-    surface = xr.open_mfdataset(surface_files, combine="by_coords", chunks={"time": 24 * 7})
-    radiation = xr.open_mfdataset(radiation_files, combine="by_coords", chunks={"time": 24 * 7})
+    surface = xr.open_mfdataset(
+        surface_files, combine="by_coords", chunks={"time": 24 * 7}
+    )
+    radiation = xr.open_mfdataset(
+        radiation_files, combine="by_coords", chunks={"time": 24 * 7}
+    )
     constants = xr.open_dataset(constant_files[0])
     required_surface = {"T2M", "QV2M", "PS", "U10M", "V10M", "PRECTOTCORR"}
     missing = sorted(required_surface - set(surface.variables))
-    other_missing = ([] if "SWGDN" in radiation else ["SWGDN"]) + ([] if "PHIS" in constants else ["PHIS"])
+    other_missing = ([] if "SWGDN" in radiation else ["SWGDN"]) + (
+        [] if "PHIS" in constants else ["PHIS"]
+    )
     if missing or other_missing:
-        raise KeyError(f"Missing MERRA-2 variables: {', '.join(missing + other_missing)}")
+        raise KeyError(
+            f"Missing MERRA-2 variables: {', '.join(missing + other_missing)}"
+        )
 
     seconds = time_step_seconds(surface)
     rh = relative_humidity_percent(surface.T2M, surface.QV2M, surface.PS)
@@ -199,12 +266,18 @@ def aggregate_merra2(surface_glob: str, radiation_glob: str, constant_glob: str,
             "wind_speed": np.hypot(surface.U10M, surface.V10M).mean("time"),
             "precipitation": (surface.PRECTOTCORR * seconds).sum("time"),
             "relative_humidity": rh.mean("time"),
-            "sunshine_hours": ((radiation.SWGDN >= sunshine_threshold).sum("time") * time_step_seconds(radiation) / 3600.0),
+            "sunshine_hours": (
+                (radiation.SWGDN >= sunshine_threshold).sum("time")
+                * time_step_seconds(radiation)
+                / 3600.0
+            ),
             "pressure": surface.PS.mean("time"),
             "altitude": constants.PHIS.squeeze(drop=True) / 9.80665,
         }
     ).compute()
-    predictors = predictors.rename({name: name.lower() for name in ("lat", "lon") if name in predictors.dims})
+    predictors = predictors.rename(
+        {name: name.lower() for name in ("lat", "lon") if name in predictors.dims}
+    )
     predictors.attrs.update(
         title=f"MERRA-2 annual pollen RF predictors for {year}",
         source=f"NASA MERRA-2 {SURFACE_COLLECTION}, {RADIATION_COLLECTION}, and {CONSTANT_COLLECTION}",
@@ -224,8 +297,13 @@ def aggregate_merra2(surface_glob: str, radiation_glob: str, constant_glob: str,
 
 
 def prepare_training(args: argparse.Namespace) -> None:
-    if not math.isfinite(args.concentration_to_production) or args.concentration_to_production <= 0.0:
-        raise ValueError("--concentration-to-production must be a positive calibrated value")
+    if (
+        not math.isfinite(args.concentration_to_production)
+        or args.concentration_to_production <= 0.0
+    ):
+        raise ValueError(
+            "--concentration-to-production must be a positive calibrated value"
+        )
     if not 0.0 < args.minimum_coverage_fraction <= 1.0:
         raise ValueError("--minimum-coverage-fraction must be in (0, 1]")
     observations = pd.read_csv(args.pollen_csv)
@@ -240,21 +318,34 @@ def prepare_training(args: argparse.Namespace) -> None:
     if missing:
         raise KeyError(f"Pollen CSV is missing columns: {', '.join(missing)}")
 
-    observations[args.time_column] = pd.to_datetime(observations[args.time_column], utc=True)
+    observations[args.time_column] = pd.to_datetime(
+        observations[args.time_column], utc=True
+    )
     observations = observations[
         (observations[args.time_column].dt.year == args.year)
-        & (observations[args.taxon_column].astype(str).str.casefold() == args.taxon.casefold())
+        & (
+            observations[args.taxon_column].astype(str).str.casefold()
+            == args.taxon.casefold()
+        )
     ].copy()
     if observations.empty:
         raise ValueError(f"No {args.taxon} observations found for {args.year}")
-    observations[args.count_column] = pd.to_numeric(observations[args.count_column], errors="coerce")
-    observations = observations.dropna(subset=[args.count_column, args.latitude_column, args.longitude_column])
+    observations[args.count_column] = pd.to_numeric(
+        observations[args.count_column], errors="coerce"
+    )
+    observations = observations.dropna(
+        subset=[args.count_column, args.latitude_column, args.longitude_column]
+    )
 
     if args.site_id_column not in observations:
         observations[args.site_id_column] = (
-            observations[args.latitude_column].round(4).astype(str) + ":" + observations[args.longitude_column].round(4).astype(str)
+            observations[args.latitude_column].round(4).astype(str)
+            + ":"
+            + observations[args.longitude_column].round(4).astype(str)
         )
-    year_hours = 8760.0 + (24.0 if pd.Timestamp(args.year, 12, 31).dayofyear == 366 else 0.0)
+    year_hours = 8760.0 + (
+        24.0 if pd.Timestamp(args.year, 12, 31).dayofyear == 366 else 0.0
+    )
     summaries = []
     for site_id, group in observations.groupby(args.site_id_column):
         group = group.sort_values(args.time_column)
@@ -269,7 +360,9 @@ def prepare_training(args: argparse.Namespace) -> None:
                 args.site_id_column: site_id,
                 "latitude": group[args.latitude_column].mean(),
                 "longitude": group[args.longitude_column].mean(),
-                "annual_concentration_days": group[args.count_column].sum() * cadence_hours / 24.0,
+                "annual_concentration_days": group[args.count_column].sum()
+                * cadence_hours
+                / 24.0,
                 "observation_count": len(group),
                 "cadence_hours": cadence_hours,
                 "coverage_fraction": coverage_fraction,
@@ -281,7 +374,9 @@ def prepare_training(args: argparse.Namespace) -> None:
     annual = annual[annual.coverage_fraction >= args.minimum_coverage_fraction].copy()
     if annual.empty:
         raise ValueError("No pollen sites meet --minimum-coverage-fraction")
-    annual["annual_pollen_production"] = annual.annual_concentration_days * args.concentration_to_production
+    annual["annual_pollen_production"] = (
+        annual.annual_concentration_days * args.concentration_to_production
+    )
 
     predictors = xr.open_dataset(args.predictor_netcdf)
     if "lat" not in predictors.coords or "lon" not in predictors.coords:
@@ -324,7 +419,14 @@ def main() -> None:
     elif args.command == "download-ambee":
         download_ambee(args)
     elif args.command == "aggregate-merra2":
-        aggregate_merra2(args.surface_glob, args.radiation_glob, args.constant_glob, args.output, args.year, args.sunshine_threshold_wm2)
+        aggregate_merra2(
+            args.surface_glob,
+            args.radiation_glob,
+            args.constant_glob,
+            args.output,
+            args.year,
+            args.sunshine_threshold_wm2,
+        )
     else:
         prepare_training(args)
 

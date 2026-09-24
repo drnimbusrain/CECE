@@ -148,7 +148,9 @@ def _fractional_day_of_year(timestamp: datetime, nx: int, ny: int) -> np.ndarray
     return np.full((ny, nx), timestamp.timetuple().tm_yday + fraction)
 
 
-def _sunshine_hours(timestamp: datetime, target_lats: np.ndarray, nx: int) -> np.ndarray:
+def _sunshine_hours(
+    timestamp: datetime, target_lats: np.ndarray, nx: int
+) -> np.ndarray:
     day_angle = 2.0 * np.pi * (timestamp.timetuple().tm_yday - 1) / 365.0
     declination = 0.006918 - 0.399912 * np.cos(day_angle) + 0.070257 * np.sin(day_angle)
     latitude = np.deg2rad(target_lats)
@@ -161,8 +163,12 @@ def _relative_humidity_percent(
     temperature_k: np.ndarray, specific_humidity: np.ndarray, pressure_pa: np.ndarray
 ) -> np.ndarray:
     temperature_c = temperature_k - 273.15
-    vapor_pressure = specific_humidity * pressure_pa / (0.622 + 0.378 * specific_humidity)
-    saturation_pressure = 611.2 * np.exp(17.67 * temperature_c / (temperature_c + 243.5))
+    vapor_pressure = (
+        specific_humidity * pressure_pa / (0.622 + 0.378 * specific_humidity)
+    )
+    saturation_pressure = 611.2 * np.exp(
+        17.67 * temperature_c / (temperature_c + 243.5)
+    )
     return np.clip(100.0 * vapor_pressure / saturation_pressure, 0.0, 100.0)
 
 
@@ -487,17 +493,29 @@ def _read_stream(
                 )
             )
 
-        for field_name, specification in (stream.get("derived_variables") or {}).items():
-            method = specification.get("method") if isinstance(specification, dict) else specification
+        for field_name, specification in (
+            stream.get("derived_variables") or {}
+        ).items():
+            method = (
+                specification.get("method")
+                if isinstance(specification, dict)
+                else specification
+            )
             if method == "solar_cosine":
                 values = _solar_cosine(timestamp_datetime, target_lons, target_lats)
             elif method == "day_of_year":
-                values = _fractional_day_of_year(timestamp_datetime, target_lons.size, target_lats.size)
+                values = _fractional_day_of_year(
+                    timestamp_datetime, target_lons.size, target_lats.size
+                )
             elif method == "sunshine_hours":
-                values = _sunshine_hours(timestamp_datetime, target_lats, target_lons.size)
+                values = _sunshine_hours(
+                    timestamp_datetime, target_lats, target_lons.size
+                )
             elif method == "relative_humidity":
                 if not isinstance(specification, dict):
-                    raise ValueError("relative_humidity derived variable requires a mapping")
+                    raise ValueError(
+                        "relative_humidity derived variable requires a mapping"
+                    )
                 source_names = {
                     "temperature": specification.get("temperature", "T2M"),
                     "specific_humidity": specification.get("specific_humidity", "QV2M"),
@@ -506,11 +524,17 @@ def _read_stream(
                 source_values = {}
                 for source, nasa_var in source_names.items():
                     if nasa_var not in dataset:
-                        raise KeyError(f"Variable {nasa_var!r} required for relative_humidity is missing")
+                        raise KeyError(
+                            f"Variable {nasa_var!r} required for relative_humidity is missing"
+                        )
                     selected = _select_time(dataset[nasa_var], timestamp)
-                    source_values[source] = _interp_to_target(selected, target_lons, target_lats)
+                    source_values[source] = _interp_to_target(
+                        selected, target_lons, target_lats
+                    )
                 values = _relative_humidity_percent(
-                    source_values["temperature"], source_values["specific_humidity"], source_values["pressure"]
+                    source_values["temperature"],
+                    source_values["specific_humidity"],
+                    source_values["pressure"],
                 )
             else:
                 raise ValueError(

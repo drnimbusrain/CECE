@@ -277,63 +277,63 @@ cece_data:
       tintalgo: nearest
       mapalgo: bilinear
       variables:
-        - {file: mugwort_pannual, model: MUGWORT_PANNUAL}
-        - {file: mugwort_sdoy, model: MUGWORT_SDOY}
-        - {file: mugwort_edoy, model: MUGWORT_EDOY}
-        - {file: chenopod_pannual, model: CHENOPOD_PANNUAL}
-        - {file: chenopod_sdoy, model: CHENOPOD_SDOY}
-        - {file: chenopod_edoy, model: CHENOPOD_EDOY}
-        - {file: ragweed_pannual, model: RAGWEED_PANNUAL}
-        - {file: ragweed_sdoy, model: RAGWEED_SDOY}
-        - {file: ragweed_edoy, model: RAGWEED_EDOY}
-        - {file: grass_pannual, model: GRASS_PANNUAL}
-        - {file: grass_sdoy, model: GRASS_SDOY}
-        - {file: grass_edoy, model: GRASS_EDOY}
-        - {file: alder_pannual, model: ALDER_PANNUAL}
-        - {file: alder_sdoy, model: ALDER_SDOY}
-        - {file: alder_edoy, model: ALDER_EDOY}
-        - {file: ash_pannual, model: ASH_PANNUAL}
-        - {file: ash_sdoy, model: ASH_SDOY}
-        - {file: ash_edoy, model: ASH_EDOY}
-        - {file: birch_pannual, model: BIRCH_PANNUAL}
-        - {file: birch_sdoy, model: BIRCH_SDOY}
-        - {file: birch_edoy, model: BIRCH_EDOY}
-        - {file: cottonwood_pannual, model: COTTONWOOD_PANNUAL}
-        - {file: cottonwood_sdoy, model: COTTONWOOD_SDOY}
-        - {file: cottonwood_edoy, model: COTTONWOOD_EDOY}
-        - {file: cypress_pannual, model: CYPRESS_PANNUAL}
-        - {file: cypress_sdoy, model: CYPRESS_SDOY}
-        - {file: cypress_edoy, model: CYPRESS_EDOY}
-        - {file: elm_pannual, model: ELM_PANNUAL}
-        - {file: elm_sdoy, model: ELM_SDOY}
-        - {file: elm_edoy, model: ELM_EDOY}
-        - {file: hazel_pannual, model: HAZEL_PANNUAL}
-        - {file: hazel_sdoy, model: HAZEL_SDOY}
-        - {file: hazel_edoy, model: HAZEL_EDOY}
-        - {file: juniper_pannual, model: JUNIPER_PANNUAL}
-        - {file: juniper_sdoy, model: JUNIPER_SDOY}
-        - {file: juniper_edoy, model: JUNIPER_EDOY}
-        - {file: maple_pannual, model: MAPLE_PANNUAL}
-        - {file: maple_sdoy, model: MAPLE_SDOY}
-        - {file: maple_edoy, model: MAPLE_EDOY}
-        - {file: oak_pannual, model: OAK_PANNUAL}
-        - {file: oak_sdoy, model: OAK_SDOY}
-        - {file: oak_edoy, model: OAK_EDOY}
-        - {file: olive_pannual, model: OLIVE_PANNUAL}
-        - {file: olive_sdoy, model: OLIVE_SDOY}
-        - {file: olive_edoy, model: OLIVE_EDOY}
-        - {file: pine_pannual, model: PINE_PANNUAL}
-        - {file: pine_sdoy, model: PINE_SDOY}
-        - {file: pine_edoy, model: PINE_EDOY}
-        - {file: plane_pannual, model: PLANE_PANNUAL}
-        - {file: plane_sdoy, model: PLANE_SDOY}
-        - {file: plane_edoy, model: PLANE_EDOY}
-        - {file: nettle_pannual, model: NETTLE_PANNUAL}
-        - {file: nettle_sdoy, model: NETTLE_SDOY}
-        - {file: nettle_edoy, model: NETTLE_EDOY}
-        - {file: total_pannual, model: TOTAL_PANNUAL}
-        - {file: total_sdoy, model: TOTAL_SDOY}
-        - {file: total_edoy, model: TOTAL_EDOY}
+        - { file: mugwort_pannual, model: MUGWORT_PANNUAL }
+        - { file: mugwort_sdoy, model: MUGWORT_SDOY }
+        - { file: mugwort_edoy, model: MUGWORT_EDOY }
+        - { file: chenopod_pannual, model: CHENOPOD_PANNUAL }
+        - { file: chenopod_sdoy, model: CHENOPOD_SDOY }
+        - { file: chenopod_edoy, model: CHENOPOD_EDOY }
+        - { file: ragweed_pannual, model: RAGWEED_PANNUAL }
+        - { file: ragweed_sdoy, model: RAGWEED_SDOY }
+        - { file: ragweed_edoy, model: RAGWEED_EDOY }
+        - { file: grass_pannual, model: GRASS_PANNUAL }
+        - { file: grass_sdoy, model: GRASS_SDOY }
+        - { file: grass_edoy, model: GRASS_EDOY }
+        - { file: alder_pannual, model: ALDER_PANNUAL }
+        - { file: alder_sdoy, model: ALDER_SDOY }
+        - { file: alder_edoy, model: ALDER_EDOY }
+        - { file: ash_pannual, model: ASH_PANNUAL }
+        - { file: ash_sdoy, model: ASH_SDOY }
+        - { file: ash_edoy, model: ASH_EDOY }
+        - { file: birch_pannual, model: BIRCH_PANNUAL }
+        - { file: birch_sdoy, model: BIRCH_SDOY }
+        - { file: birch_edoy, model: BIRCH_EDOY }
+        - { file: cottonwood_pannual, model: COTTONWOOD_PANNUAL }
+        - { file: cottonwood_sdoy, model: COTTONWOOD_SDOY }
+        - { file: cottonwood_edoy, model: COTTONWOOD_EDOY }
+        - { file: cypress_pannual, model: CYPRESS_PANNUAL }
+        - { file: cypress_sdoy, model: CYPRESS_SDOY }
+        - { file: cypress_edoy, model: CYPRESS_EDOY }
+        - { file: elm_pannual, model: ELM_PANNUAL }
+        - { file: elm_sdoy, model: ELM_SDOY }
+        - { file: elm_edoy, model: ELM_EDOY }
+        - { file: hazel_pannual, model: HAZEL_PANNUAL }
+        - { file: hazel_sdoy, model: HAZEL_SDOY }
+        - { file: hazel_edoy, model: HAZEL_EDOY }
+        - { file: juniper_pannual, model: JUNIPER_PANNUAL }
+        - { file: juniper_sdoy, model: JUNIPER_SDOY }
+        - { file: juniper_edoy, model: JUNIPER_EDOY }
+        - { file: maple_pannual, model: MAPLE_PANNUAL }
+        - { file: maple_sdoy, model: MAPLE_SDOY }
+        - { file: maple_edoy, model: MAPLE_EDOY }
+        - { file: oak_pannual, model: OAK_PANNUAL }
+        - { file: oak_sdoy, model: OAK_SDOY }
+        - { file: oak_edoy, model: OAK_EDOY }
+        - { file: olive_pannual, model: OLIVE_PANNUAL }
+        - { file: olive_sdoy, model: OLIVE_SDOY }
+        - { file: olive_edoy, model: OLIVE_EDOY }
+        - { file: pine_pannual, model: PINE_PANNUAL }
+        - { file: pine_sdoy, model: PINE_SDOY }
+        - { file: pine_edoy, model: PINE_EDOY }
+        - { file: plane_pannual, model: PLANE_PANNUAL }
+        - { file: plane_sdoy, model: PLANE_SDOY }
+        - { file: plane_edoy, model: PLANE_EDOY }
+        - { file: nettle_pannual, model: NETTLE_PANNUAL }
+        - { file: nettle_sdoy, model: NETTLE_SDOY }
+        - { file: nettle_edoy, model: NETTLE_EDOY }
+        - { file: total_pannual, model: TOTAL_PANNUAL }
+        - { file: total_sdoy, model: TOTAL_SDOY }
+        - { file: total_edoy, model: TOTAL_EDOY }
 
     - name: MERRA2_POLLEN_STATE
       source: earthaccess

@@ -29,12 +29,16 @@ def main() -> None:
     lat = np.linspace(39.05, 41.45, ny)
     hours = np.arange(nt, dtype=np.float64)
     lon_grid, lat_grid = np.meshgrid(lon, lat)
-    spatial_peak = np.exp(-(((lon_grid - 116.5) / 0.9) ** 2 + ((lat_grid - 40.2) / 0.7) ** 2))
+    spatial_peak = np.exp(
+        -(((lon_grid - 116.5) / 0.9) ** 2 + ((lat_grid - 40.2) / 0.7) ** 2)
+    )
 
     c3_fraction = np.clip(0.12 + 0.45 * spatial_peak, 0.0, 1.0)
     grass_fraction = np.clip(c3_fraction + 0.18, 0.0, 1.0)
     artemisia_pannual = 0.8e6 + 0.8e6 * spatial_peak
-    chenopod_pannual = 0.5e6 + 0.9e6 * (1.0 - (lat_grid - lat.min()) / (lat.max() - lat.min()))
+    chenopod_pannual = 0.5e6 + 0.9e6 * (
+        1.0 - (lat_grid - lat.min()) / (lat.max() - lat.min())
+    )
     total_pannual = 6.5e6 + 2.5e6 * spatial_peak
 
     local_hour = hours[:, None, None] % 24.0
@@ -76,28 +80,87 @@ def main() -> None:
         lon_var[:] = lon
 
         def write(name: str, values: np.ndarray, units: str, long_name: str) -> None:
-            variable = dataset.createVariable(name, "f8", ("time", "lat", "lon"), zlib=True)
+            variable = dataset.createVariable(
+                name, "f8", ("time", "lat", "lon"), zlib=True
+            )
             variable.units = units
             variable.long_name = long_name
             variable.coordinates = "lat lon"
             variable[:] = values
 
-        write("artemisia_pannual", repeat(artemisia_pannual), "grains m-2 yr-1", "synthetic annual Artemisia pollen production")
-        write("chenopod_pannual", repeat(chenopod_pannual), "grains m-2 yr-1", "synthetic annual chenopod pollen production")
-        write("total_pannual", repeat(total_pannual), "grains m-2 yr-1", "synthetic annual total pollen production")
-        write("c3_fraction", repeat(c3_fraction), "1", "C3 plant functional type fraction")
+        write(
+            "artemisia_pannual",
+            repeat(artemisia_pannual),
+            "grains m-2 yr-1",
+            "synthetic annual Artemisia pollen production",
+        )
+        write(
+            "chenopod_pannual",
+            repeat(chenopod_pannual),
+            "grains m-2 yr-1",
+            "synthetic annual chenopod pollen production",
+        )
+        write(
+            "total_pannual",
+            repeat(total_pannual),
+            "grains m-2 yr-1",
+            "synthetic annual total pollen production",
+        )
+        write(
+            "c3_fraction", repeat(c3_fraction), "1", "C3 plant functional type fraction"
+        )
         write("grass_fraction", repeat(grass_fraction), "1", "C3 and C4 grass fraction")
-        write("artemisia_sdoy", repeat(np.full((ny, nx), 222.0)), "day_of_year", "Artemisia season start")
-        write("artemisia_edoy", repeat(np.full((ny, nx), 268.0)), "day_of_year", "Artemisia season end")
-        write("chenopod_sdoy", repeat(np.full((ny, nx), 220.0)), "day_of_year", "chenopod season start")
-        write("chenopod_edoy", repeat(np.full((ny, nx), 270.0)), "day_of_year", "chenopod season end")
-        write("total_sdoy", repeat(np.full((ny, nx), 215.0)), "day_of_year", "total pollen season start")
-        write("total_edoy", repeat(np.full((ny, nx), 280.0)), "day_of_year", "total pollen season end")
+        write(
+            "artemisia_sdoy",
+            repeat(np.full((ny, nx), 222.0)),
+            "day_of_year",
+            "Artemisia season start",
+        )
+        write(
+            "artemisia_edoy",
+            repeat(np.full((ny, nx), 268.0)),
+            "day_of_year",
+            "Artemisia season end",
+        )
+        write(
+            "chenopod_sdoy",
+            repeat(np.full((ny, nx), 220.0)),
+            "day_of_year",
+            "chenopod season start",
+        )
+        write(
+            "chenopod_edoy",
+            repeat(np.full((ny, nx), 270.0)),
+            "day_of_year",
+            "chenopod season end",
+        )
+        write(
+            "total_sdoy",
+            repeat(np.full((ny, nx), 215.0)),
+            "day_of_year",
+            "total pollen season start",
+        )
+        write(
+            "total_edoy",
+            repeat(np.full((ny, nx), 280.0)),
+            "day_of_year",
+            "total pollen season end",
+        )
         write("day_of_year", day_of_year, "day_of_year", "fractional day of year")
         write("temperature_2m", temperature, "K", "2 m air temperature")
         write("wind_speed_10m", wind_speed, "m s-1", "10 m wind speed")
-        write("convective_velocity", convective_velocity, "m s-1", "convective velocity scale")
-        write("precipitation_interval", precipitation, "mm", "precipitation accumulated over the one-hour interval")
+        write(
+            "convective_velocity",
+            convective_velocity,
+            "m s-1",
+            "convective velocity scale",
+        )
+        write(
+            "precipitation_interval",
+            precipitation,
+            "mm",
+            "precipitation accumulated over the one-hour interval",
+        )
         write("relative_humidity_2m", relative_humidity, "%", "2 m relative humidity")
         write("sunshine_hours", sunshine_hours, "h", "daily sunshine duration")
 

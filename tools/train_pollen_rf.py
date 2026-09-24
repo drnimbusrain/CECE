@@ -25,15 +25,41 @@ def parse_args() -> argparse.Namespace:
         description="Fit annual pollen production from observations and meteorology, then predict a gridded CECE input field."
     )
     parser.add_argument("training_csv", type=Path, help="Station/year training table")
-    parser.add_argument("predictor_netcdf", type=Path, help="Gridded predictor variables")
-    parser.add_argument("output_netcdf", type=Path, help="Output RF annual-production map")
-    parser.add_argument("--target", default="annual_pollen_production", help="Training target column [grains m-2 yr-1]")
-    parser.add_argument("--taxon", required=True, help="Taxon label stored in output metadata")
-    parser.add_argument("--features", default=DEFAULT_FEATURES, help="Comma-separated training columns and NetCDF variables")
-    parser.add_argument("--model-output", type=Path, help="Optional joblib path for the fitted estimator")
+    parser.add_argument(
+        "predictor_netcdf", type=Path, help="Gridded predictor variables"
+    )
+    parser.add_argument(
+        "output_netcdf", type=Path, help="Output RF annual-production map"
+    )
+    parser.add_argument(
+        "--target",
+        default="annual_pollen_production",
+        help="Training target column [grains m-2 yr-1]",
+    )
+    parser.add_argument(
+        "--taxon", required=True, help="Taxon label stored in output metadata"
+    )
+    parser.add_argument(
+        "--features",
+        default=DEFAULT_FEATURES,
+        help="Comma-separated training columns and NetCDF variables",
+    )
+    parser.add_argument(
+        "--model-output",
+        type=Path,
+        help="Optional joblib path for the fitted estimator",
+    )
     parser.add_argument("--random-state", type=int, default=42)
-    parser.add_argument("--training-source", required=True, help="Observation dataset and version used to derive the target")
-    parser.add_argument("--meteorology-source", default="NASA MERRA-2", help="Predictor dataset stored in output provenance")
+    parser.add_argument(
+        "--training-source",
+        required=True,
+        help="Observation dataset and version used to derive the target",
+    )
+    parser.add_argument(
+        "--meteorology-source",
+        default="NASA MERRA-2",
+        help="Predictor dataset stored in output provenance",
+    )
     parser.add_argument("--year", type=int, default=2025)
     return parser.parse_args()
 
@@ -46,7 +72,10 @@ def main() -> None:
         raise ValueError("At least 10 complete station/year records are required")
 
     train_x, test_x, train_y, test_y = train_test_split(
-        training[features], training[args.target], test_size=0.2, random_state=args.random_state
+        training[features],
+        training[args.target],
+        test_size=0.2,
+        random_state=args.random_state,
     )
     search = GridSearchCV(
         RandomForestRegressor(random_state=args.random_state, n_jobs=-1),
@@ -69,11 +98,18 @@ def main() -> None:
         raise KeyError(f"Predictor NetCDF is missing variables: {', '.join(missing)}")
     broadcast = xr.broadcast(*(predictors[name] for name in features))
     valid = np.logical_and.reduce([np.isfinite(field.values) for field in broadcast])
-    matrix = pd.DataFrame(np.column_stack([field.values[valid] for field in broadcast]), columns=features)
+    matrix = pd.DataFrame(
+        np.column_stack([field.values[valid] for field in broadcast]), columns=features
+    )
     prediction = np.full(broadcast[0].shape, np.nan, dtype=np.float64)
     prediction[valid] = np.maximum(0.0, model.predict(matrix))
 
-    annual = xr.DataArray(prediction, coords=broadcast[0].coords, dims=broadcast[0].dims, name="annual_pollen_production")
+    annual = xr.DataArray(
+        prediction,
+        coords=broadcast[0].coords,
+        dims=broadcast[0].dims,
+        name="annual_pollen_production",
+    )
     if "time" not in annual.dims:
         annual = annual.expand_dims(time=[np.datetime64(f"{args.year}-01-01")])
     annual.attrs.update(

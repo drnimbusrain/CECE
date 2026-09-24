@@ -11,9 +11,9 @@
 #include <axis/axis.hpp>
 #include <cerrno>
 #include <cmath>
-#include <cstdlib>
 #include <conf/conf.hpp>
 #include <cstdint>
+#include <cstdlib>
 #include <dagr/logging.hpp>
 #include <filesystem>
 #include <fstream>

@@ -367,9 +367,9 @@ TEST_F(PhysicsTest, PollenUsesConfiguredVegetationFractionForPremaskedClimatolog
 
 TEST_F(PhysicsTest, PollenTaxonAliasesAreRegistered) {
     const std::vector<std::string> aliases = {
-        "pollen",       "pollen_artemisia", "pollen_mugwort", "pollen_chenopod", "pollen_ragweed", "pollen_grass", "pollen_alder",
-        "pollen_ash",   "pollen_birch",     "pollen_cottonwood", "pollen_cypress", "pollen_elm",     "pollen_hazel", "pollen_juniper",
-        "pollen_maple", "pollen_oak",       "pollen_olive",   "pollen_pine",     "pollen_plane",   "pollen_nettle", "pollen_total",
+        "pollen",       "pollen_artemisia", "pollen_mugwort",    "pollen_chenopod", "pollen_ragweed", "pollen_grass",  "pollen_alder",
+        "pollen_ash",   "pollen_birch",     "pollen_cottonwood", "pollen_cypress",  "pollen_elm",     "pollen_hazel",  "pollen_juniper",
+        "pollen_maple", "pollen_oak",       "pollen_olive",      "pollen_pine",     "pollen_plane",   "pollen_nettle", "pollen_total",
     };
 
     for (const auto& alias : aliases) {

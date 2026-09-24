@@ -127,15 +127,15 @@ void PollenScheme::Run(CeceImportState& import_state, CeceExportState& export_st
     auto forcing_diagnostic = ResolveExport("pollen_phenology_forcing", export_state);
 
     RequireFields("PollenScheme::Run", {{MapInput("day_of_year"), day_of_year.data() != nullptr},
-                                         {MapInput("annual_pollen_production"), annual_production.data() != nullptr},
-                                         {MapInput("wind_speed"), wind_speed.data() != nullptr},
-                                         {MapInput("convective_velocity"), convective_velocity.data() != nullptr},
-                                         {MapInput("precipitation"), precipitation.data() != nullptr},
-                                         {MapInput("relative_humidity"), relative_humidity.data() != nullptr},
-                                         {MapInput("temperature"), temperature.data() != nullptr},
-                                         {MapInput("sunshine_hours"), sunshine_hours.data() != nullptr},
-                                         {MapOutput("pollen_number_emissions"), number_flux.data() != nullptr},
-                                         {MapOutput("pollen_mass_emissions"), mass_flux.data() != nullptr}});
+                                        {MapInput("annual_pollen_production"), annual_production.data() != nullptr},
+                                        {MapInput("wind_speed"), wind_speed.data() != nullptr},
+                                        {MapInput("convective_velocity"), convective_velocity.data() != nullptr},
+                                        {MapInput("precipitation"), precipitation.data() != nullptr},
+                                        {MapInput("relative_humidity"), relative_humidity.data() != nullptr},
+                                        {MapInput("temperature"), temperature.data() != nullptr},
+                                        {MapInput("sunshine_hours"), sunshine_hours.data() != nullptr},
+                                        {MapOutput("pollen_number_emissions"), number_flux.data() != nullptr},
+                                        {MapOutput("pollen_mass_emissions"), mass_flux.data() != nullptr}});
     if (use_autumn_trigger_ && accumulated_forcing.data() == nullptr) {
         throw std::runtime_error("PollenScheme::Run missing required field '" + MapInput("autumn_accumulated_forcing") + "'");
     }
@@ -179,8 +179,8 @@ void PollenScheme::Run(CeceImportState& import_state, CeceExportState& export_st
             const double mean = 0.5 * (start + end);
             const double sigma = (end - start) / width;
             const double temperature_c = temperature(i, j, 0) - 273.15;
-            const double current_forcing = autumn_forcing(method, temperature_c, sunshine_hours(i, j, 0), t_base, sunshine_base,
-                                                          temperature_exponent, sunshine_exponent, sigmoid_a, sigmoid_b);
+            const double current_forcing = autumn_forcing(method, temperature_c, sunshine_hours(i, j, 0), t_base, sunshine_base, temperature_exponent,
+                                                          sunshine_exponent, sigmoid_a, sigmoid_b);
 
             double flux = 0.0;
             if (sigma > 0.0 && doy >= start && doy <= end && (!use_trigger || accumulated_forcing(i, j, 0) >= trigger_threshold)) {
