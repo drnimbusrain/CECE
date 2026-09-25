@@ -53,7 +53,12 @@ def parse_args() -> argparse.Namespace:
     ambee.add_argument(
         "--count-path",
         required=True,
-        help="Dot path within each record to the numeric pollen count",
+        help=(
+            "Dot path within each record to the numeric pollen count. "
+            "Join multiple dot paths with '+' to sum group counts into an "
+            "aggregate (e.g. 'Count.grass_pollen+Count.tree_pollen+Count.weed_pollen' "
+            "for pollen_total)"
+        ),
     )
     ambee.add_argument("--chunk-days", type=int, default=7)
     ambee.add_argument("--request-delay-seconds", type=float, default=0.25)
@@ -142,6 +147,11 @@ def nested_value(value: object, path: str) -> object:
     return current
 
 
+def nested_count(record: object, count_path: str) -> float:
+    """Resolve --count-path, summing '+'-joined dot paths for aggregate taxa (e.g. total pollen)."""
+    return sum(float(nested_value(record, part)) for part in count_path.split("+"))
+
+
 def download_ambee(args: argparse.Namespace) -> None:
     api_key = os.environ.get("AMBEE_API_KEY")
     if not api_key:
@@ -193,7 +203,7 @@ def download_ambee(args: argparse.Namespace) -> None:
                         "longitude": float(site.longitude),
                         "timestamp": nested_value(record, args.timestamp_path),
                         "taxon": args.taxon,
-                        "pollen_count": float(nested_value(record, args.count_path)),
+                        "pollen_count": nested_count(record, args.count_path),
                     }
                 )
             chunk_start = chunk_stop

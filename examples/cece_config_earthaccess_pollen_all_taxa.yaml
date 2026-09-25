@@ -11,6 +11,13 @@
 # with a singleton 2025 time coordinate and, for each TAXON below:
 #   TAXON_pannual [grains m-2 yr-1], TAXON_sdoy, TAXON_edoy
 #
+# Train and include only taxa your observation provider actually supports at
+# your sites (docs/pollen.md); remove unsupported taxa rather than filling
+# missing climatologies with zero. Ambee, for example, reports juniper and
+# cedar merged into cypress (Species.Tree.Cypress/Juniper/Cedar) with no
+# separate juniper field, so pollen_cypress and pollen_juniper must not both
+# be trained from that same combined Ambee count.
+#
 # Particle diameter and density defaults are placeholders in this broad
 # example. Configure taxon-specific measured values for scientific production.
 # =====================================================================

@@ -148,20 +148,83 @@ python tools/prepare_global_pollen_rf.py aggregate-merra2 \
 
 Obtain an authorized 2025 historical pollen-count export from a provider such as Ambee. Normalize its columns to `site_id`, `latitude`, `longitude`, `timestamp`, `taxon`, and `pollen_count`, or pass the corresponding `--*-column` options. Ambee API keys must remain in the provider client or environment and must never be committed.
 
-For station-based API retrieval, prepare `pollen_sites.csv` with `site_id`, `latitude`, and `longitude`, set `AMBEE_API_KEY` directly in the shell, and specify the response paths documented for your Ambee subscription. The public endpoint documentation does not guarantee one universal species-count JSON layout, so `--count-path` is deliberately explicit.
+For station-based API retrieval, prepare a sites CSV with `site_id`, `latitude`, and `longitude` columns (`data/pollen/pollen_sites_global.csv` ships a reference set of major cities across every continent for global training coverage), and set `AMBEE_API_KEY` directly in the shell:
+
+```bash
+export AMBEE_API_KEY="your-key-here"
+```
+
+The public endpoint documentation does not guarantee one universal species-count JSON layout, so `--records-path`, `--timestamp-path`, and `--count-path` are deliberately explicit. Discover the real layout for your account and site before running a full year, since Ambee's free trial only returns the past 2 days through `v3/pollen/history` (a longer range returns `HTTP 400 "Only past 2 days data available!"`; email `contactus@getambee.com` for full-year/bulk access):
+
+```bash
+curl -sS -G "https://api.ambeedata.com/v3/pollen/history" \
+  -H "x-api-key: $AMBEE_API_KEY" \
+  --data-urlencode "lat=39.7392" \
+  --data-urlencode "lng=-104.9903" \
+  --data-urlencode "from=$(date -u -d '2 days ago' '+%Y-%m-%d %H:%M:%S')" \
+  --data-urlencode "to=$(date -u '+%Y-%m-%d %H:%M:%S')" \
+  --data-urlencode "speciesRisk=true" | python -m json.tool
+```
+
+Note `-G` (not `-X GET`): `--data-urlencode` normally builds a POST body, and `-G` moves those values into the query string so the request is a genuine GET.
+
+A typical response nests per-record group counts under `Count` and per-species counts under `Species`, with the record timestamp in `timestamp` (not the tool's default `updatedAt` — override it):
+
+```json
+{
+  "data": [
+    {
+      "Count": {"grass_pollen": 0, "tree_pollen": 35, "weed_pollen": 35},
+      "Species": {
+        "Grass": {"Grass": 0},
+        "Tree": {"Ash": 0, "Birch": 0, "Elm": 35, "Oak": 0, "Pine": 0},
+        "Weed": {"Ragweed": 35}
+      },
+      "timestamp": "2026-09-23T20:00:00.000Z"
+    }
+  ]
+}
+```
+
+Only request taxa your own site's response actually contains; species coverage is region-dependent and an absent field must never be treated as zero. Typical mappings from this layout to CECE taxon aliases:
+
+| CECE taxon | `--taxon` | `--count-path` |
+|---|---|---|
+| Grass | `grass` | `Species.Grass.Grass` |
+| Ash | `ash` | `Species.Tree.Ash` |
+| Birch | `birch` | `Species.Tree.Birch` |
+| Cypress/juniper/cedar group | `cypress` | `Species.Tree.Cypress/Juniper/Cedar` |
+| Elm | `elm` | `Species.Tree.Elm` |
+| Maple | `maple` | `Species.Tree.Maple` |
+| Oak | `oak` | `Species.Tree.Oak` |
+| Pine | `pine` | `Species.Tree.Pine` |
+| Cottonwood/poplar | `cottonwood` | `Species.Tree.Poplar/Cottonwood` |
+| Ragweed | `ragweed` | `Species.Weed.Ragweed` |
+| Total (aggregate) | `total` | `Count.grass_pollen+Count.tree_pollen+Count.weed_pollen` |
+
+Ambee groups juniper and cedar into `Cypress/Juniper/Cedar`; don't also run a separate `pollen_juniper` extraction from that same combined value, or the two taxa would double-count the same pollen. There is no single `pollen_total` field in Ambee's response, so `--count-path` accepts `+`-joined dot paths and sums them; use this only for genuine aggregates such as the total across grass, tree, and weed groups.
 
 ```bash
 python tools/prepare_global_pollen_rf.py download-ambee \
-  pollen_sites.csv \
-  data/pollen/ambee_pollen_history_2025.csv \
+  data/pollen/pollen_sites_global.csv \
+  data/pollen/ambee_pollen_history_2025_elm.csv \
   --year 2025 \
-  --taxon mugwort \
+  --taxon elm \
   --records-path data \
-  --timestamp-path updatedAt \
-  --count-path YOUR_SUBSCRIPTION_COUNT_PATH
+  --timestamp-path timestamp \
+  --count-path Species.Tree.Elm
+
+python tools/prepare_global_pollen_rf.py download-ambee \
+  data/pollen/pollen_sites_global.csv \
+  data/pollen/ambee_pollen_history_2025_total.csv \
+  --year 2025 \
+  --taxon total \
+  --records-path data \
+  --timestamp-path timestamp \
+  --count-path "Count.grass_pollen+Count.tree_pollen+Count.weed_pollen"
 ```
 
-Use Ambee's licensed bulk historical product for dense global mapping. Calling a 500 m global grid through the point API would require an impractical number of billable requests.
+Mugwort/Artemisia, chenopod, nettle, alder, hazel, olive, and plane did not appear at all in the sample response above; confirm each of those fields actually exists in your own site's payload (run the discovery `curl` per site/region) before assuming Ambee reports them there.
 
 Airborne pollen concentration is affected by transport and removal and is not identical to source production. Therefore, preparation requires a positive `--concentration-to-production` factor calibrated against source measurements or an inverse transport model. This prevents concentration or pollen-index values from being silently labeled as `grains m-2 yr-1`.
 
@@ -169,7 +232,7 @@ The preparer infers each site's reporting cadence, integrates concentration in c
 
 ```bash
 python tools/prepare_global_pollen_rf.py prepare-training \
-  ambee_pollen_history_2025.csv \
+  data/pollen/ambee_pollen_history_2025_mugwort.csv \
   data/pollen/merra2_annual_predictors_2025.nc \
   data/pollen/mugwort_training_2025.csv \
   --year 2025 \
@@ -183,9 +246,11 @@ python tools/train_pollen_rf.py \
   --taxon mugwort \
   --year 2025 \
   --training-source 'Ambee historical pollen export, 2025' \
-  --meteorology-source 'NASA MERRA-2 M2T1NXSLV, M2T1NXRAD, and M2C0NXASM' \
+  --meteorology-source 'NASA MERRA-2 M2T1NXSLV, M2T1NXFLX, M2T1NXRAD, and M2C0NXASM' \
   --model-output data/pollen/mugwort_rf_2025.joblib
 ```
+
+This assumes your Ambee response actually contains a mugwort/Artemisia field (verified with the discovery `curl` above); the sample payload shown earlier only had elm, ragweed, and grass, so substitute whichever taxa your own account and sites return.
 
 Repeat the preparation and training stages for each supported taxon. The Google Maps Pollen API is not suitable for reconstructing calendar year 2025: it provides a rolling forecast of up to five days and a Universal Pollen Index rather than a historical concentration archive. Its values must not be used as annual production observations.
 
@@ -230,7 +295,7 @@ export EARTHDATA_TOKEN=<NASA-Earthdata-token>
 
 The example expects `data/pollen/annual_pollen_production_mugwort_2025.nc`, generated by the global 2025 workflow above. Earthdata credentials can alternatively be supplied through `~/.netrc`; see `docs/examples.md` for live and staged Earthaccess operation.
 
-`examples/cece_config_earthaccess_pollen_all_taxa.yaml` demonstrates every distinct built-in taxon alias plus `pollen_total`. It expects `data/pollen/annual_pollen_production_all_taxa_2025.nc` containing `{taxon}_pannual`, `{taxon}_sdoy`, and `{taxon}_edoy` variables. `pollen_artemisia` is omitted because it is synonymous with the included `pollen_mugwort` pool.
+`examples/cece_config_earthaccess_pollen_all_taxa.yaml` demonstrates every distinct built-in taxon alias plus `pollen_total`. It expects `data/pollen/annual_pollen_production_all_taxa_2025.nc` containing `{taxon}_pannual`, `{taxon}_sdoy`, and `{taxon}_edoy` variables. `pollen_artemisia` is omitted because it is synonymous with the included `pollen_mugwort` pool. Remove any taxon not actually available from your observation provider at your sites — for example, Ambee reports juniper and cedar merged into `pollen_cypress`'s `Species.Tree.Cypress/Juniper/Cedar` field with no separate juniper count, so don't train and instantiate both `pollen_cypress` and `pollen_juniper` from that same Ambee export.
 
 After training each taxon separately, consolidate the products without changing their coordinates:
 

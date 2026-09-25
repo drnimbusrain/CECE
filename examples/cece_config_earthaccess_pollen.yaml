@@ -8,6 +8,10 @@
 #
 # Generate the annual source climatology first (docs/pollen.md):
 #   data/pollen/annual_pollen_production_mugwort_2025.nc
+# via tools/prepare_global_pollen_rf.py download-merra2/aggregate-merra2 and
+# download-ambee (data/pollen/pollen_sites_global.csv is a ready-made global
+# site list; use --timestamp-path timestamp and the --count-path documented
+# for your own Ambee account response, not the tool's updatedAt default).
 #
 # The RF file supplies the annual pollen pool. MERRA-2 meteorology is streamed
 # at each CECE timestep and controls Gaussian-pool mobilization online.
