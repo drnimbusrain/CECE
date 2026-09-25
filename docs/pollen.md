@@ -140,6 +140,7 @@ python tools/prepare_global_pollen_rf.py download-merra2 \
 python tools/prepare_global_pollen_rf.py aggregate-merra2 \
   --year 2025 \
   --surface-glob 'data/pollen/merra2/2025/MERRA2_*tavg1_2d_slv_Nx*.nc4' \
+  --flux-glob 'data/pollen/merra2/2025/MERRA2_*tavg1_2d_flx_Nx*.nc4' \
   --radiation-glob 'data/pollen/merra2/2025/MERRA2_*tavg1_2d_rad_Nx*.nc4' \
   --constant-glob 'data/pollen/merra2/2025/MERRA2_*const_2d_asm_Nx*.nc4' \
   --output data/pollen/merra2_annual_predictors_2025.nc

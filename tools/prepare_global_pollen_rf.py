@@ -18,6 +18,7 @@ import xarray as xr
 
 
 SURFACE_COLLECTION = "M2T1NXSLV"
+FLUX_COLLECTION = "M2T1NXFLX"
 RADIATION_COLLECTION = "M2T1NXRAD"
 CONSTANT_COLLECTION = "M2C0NXASM"
 
@@ -63,6 +64,9 @@ def parse_args() -> argparse.Namespace:
     aggregate.add_argument("--year", type=int, default=2025)
     aggregate.add_argument(
         "--surface-glob", default="data/pollen/merra2/2025/MERRA2_*tavg1_2d_slv_Nx*.nc4"
+    )
+    aggregate.add_argument(
+        "--flux-glob", default="data/pollen/merra2/2025/MERRA2_*tavg1_2d_flx_Nx*.nc4"
     )
     aggregate.add_argument(
         "--radiation-glob",
@@ -116,7 +120,7 @@ def download_merra2(year: int, output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     earthaccess.login()
     temporal = (f"{year}-01-01", f"{year}-12-31T23:59:59")
-    for short_name in (SURFACE_COLLECTION, RADIATION_COLLECTION):
+    for short_name in (SURFACE_COLLECTION, FLUX_COLLECTION, RADIATION_COLLECTION):
         results = earthaccess.search_data(short_name=short_name, temporal=temporal)
         if not results:
             raise RuntimeError(
@@ -225,6 +229,7 @@ def relative_humidity_percent(
 
 def aggregate_merra2(
     surface_glob: str,
+    flux_glob: str,
     radiation_glob: str,
     constant_glob: str,
     output: Path,
@@ -232,24 +237,28 @@ def aggregate_merra2(
     sunshine_threshold: float,
 ) -> None:
     surface_files = sorted(Path(path) for path in glob.glob(surface_glob))
+    flux_files = sorted(Path(path) for path in glob.glob(flux_glob))
     radiation_files = sorted(Path(path) for path in glob.glob(radiation_glob))
     constant_files = sorted(Path(path) for path in glob.glob(constant_glob))
-    if not surface_files or not radiation_files or not constant_files:
+    if not surface_files or not flux_files or not radiation_files or not constant_files:
         raise FileNotFoundError(
-            "MERRA-2 surface, radiation, and constant files are required; run download-merra2 first"
+            "MERRA-2 surface, flux, radiation, and constant files are required; run download-merra2 first"
         )
 
     surface = xr.open_mfdataset(
         surface_files, combine="by_coords", chunks={"time": 24 * 7}
     )
+    flux = xr.open_mfdataset(flux_files, combine="by_coords", chunks={"time": 24 * 7})
     radiation = xr.open_mfdataset(
         radiation_files, combine="by_coords", chunks={"time": 24 * 7}
     )
     constants = xr.open_dataset(constant_files[0])
-    required_surface = {"T2M", "QV2M", "PS", "U10M", "V10M", "PRECTOTCORR"}
+    required_surface = {"T2M", "QV2M", "PS", "U10M", "V10M"}
     missing = sorted(required_surface - set(surface.variables))
-    other_missing = ([] if "SWGDN" in radiation else ["SWGDN"]) + (
-        [] if "PHIS" in constants else ["PHIS"]
+    other_missing = (
+        ([] if "PRECTOTCORR" in flux else ["PRECTOTCORR"])
+        + ([] if "SWGDN" in radiation else ["SWGDN"])
+        + ([] if "PHIS" in constants else ["PHIS"])
     )
     if missing or other_missing:
         raise KeyError(
@@ -264,7 +273,7 @@ def aggregate_merra2(
             "temperature_max": surface.T2M.max("time"),
             "temperature_min": surface.T2M.min("time"),
             "wind_speed": np.hypot(surface.U10M, surface.V10M).mean("time"),
-            "precipitation": (surface.PRECTOTCORR * seconds).sum("time"),
+            "precipitation": (flux.PRECTOTCORR * seconds).sum("time"),
             "relative_humidity": rh.mean("time"),
             "sunshine_hours": (
                 (radiation.SWGDN >= sunshine_threshold).sum("time")
@@ -421,6 +430,7 @@ def main() -> None:
     elif args.command == "aggregate-merra2":
         aggregate_merra2(
             args.surface_glob,
+            args.flux_glob,
             args.radiation_glob,
             args.constant_glob,
             args.output,
