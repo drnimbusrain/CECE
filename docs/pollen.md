@@ -146,7 +146,7 @@ python tools/prepare_global_pollen_rf.py aggregate-merra2 \
   --output data/pollen/merra2_annual_predictors_2025.nc
 ```
 
-The accompanying [Ambee Pollen Data Dictionary](../data/pollen/Pollen%20Data%20Dictionary.2026.xlsx) distinguishes historical hourly and daily products. The hourly product is available through the history API and S3; it has UTC `timestamp` records and numeric pollen concentrations in particles/m³. The S3 history is listed back to 2015, with additional historical coverage available on request; the dictionary does not promise the same range through the API. API history access depends on the account: a free account may be restricted to its most recent two days, as in the `HTTP 400 "Only past 2 days data available!"` response. Contact `contactus@getambee.com` to confirm or request full-year API access. The daily historical product is listed as S3-only (not API); it has a local `date` plus `timezone` and daily `_min`, `_max`, and `_mean` concentration values in particles/m³, with S3 history listed back to 2015.
+Ambee provides hourly historical pollen through the history API and S3. Hourly records use UTC `timestamp` values and numeric pollen concentrations in particles/m³. S3 hourly history extends back to 2015, with additional historical coverage available on request; API history range depends on the account. A free account may be restricted to its most recent two days, as in the `HTTP 400 "Only past 2 days data available!"` response. Contact `contactus@getambee.com` to confirm or request full-year API access. Daily historical pollen is available through S3, not the history API; it uses a local `date`, a `timezone`, and daily `_min`, `_max`, and `_mean` concentration values in particles/m³.
 
 For API retrieval, prepare a sites CSV with `site_id`, `latitude`, and `longitude` columns (`data/pollen/pollen_sites_global.csv` is a reference set of major cities) and set the API key in the shell:
 
@@ -166,7 +166,7 @@ curl -sS -G "https://api.ambeedata.com/v3/pollen/history" \
   --data-urlencode "speciesRisk=true" | python -m json.tool
 ```
 
-The hourly API response uses `data` for records, `timestamp` for UTC time, `Count` for the three top-level pollen types, and `Species` for optional species counts. The field names below come from the dictionary and the nested paths are confirmed by the API response shape:
+The hourly API response uses `data` for records, `timestamp` for UTC time, `Count` for the three top-level pollen types, and `Species` for optional species counts. The nested paths below match the API response shape:
 
 ```json
 {
@@ -187,7 +187,7 @@ The hourly API response uses `data` for records, `timestamp` for UTC time, `Coun
 
 Ambee does not document a single `count_total_pollen` field. `Count.grass_pollen + Count.tree_pollen + Count.weed_pollen` is the sum of the three global pollen-type counts and is what this workflow labels `total`. `Species.Others` is a separate optional count for unclassified genera and is not included in that three-type total; keep it as its own training class unless Ambee confirms it is non-overlapping and should be added. Do not sum group counts and their member species together: species counts are subdivisions, not extra counts. Risk fields are categorical strings, not concentration values, and must not be used as `pollen_count`.
 
-Use repeated `--count-path TAXON=PATH` arguments to extract many outputs from each API response (rather than repeating the same billable request per taxon). Common paths and dictionary coverage are:
+Use repeated `--count-path TAXON=PATH` arguments to extract many outputs from each API response (rather than repeating the same billable request per taxon). Common paths and reported regional coverage are:
 
 | Group | Label/path suffix | Reported coverage |
 |---|---|---|
@@ -243,7 +243,7 @@ python tools/prepare_global_pollen_rf.py download-ambee \
 
 `download-ambee` retrieves the hourly API product; it does not download Ambee's historical daily S3 product. For daily S3 files, use the daily `_mean` fields for the concentration time series (not the categorical risk fields or the daily min/max extrema), normalize the export to `site_id`, `latitude`, `longitude`, `date`, `taxon`, and `pollen_count`, then pass `--time-column date` and `--count-column pollen_count` to `prepare-training`. Preserve the provider's local date and timezone in the source data/provenance; the training preparer parses the selected date column as UTC and does not apply the separate timezone field. Daily data can be integrated as one 24-hour observation per date; do not combine hourly and daily rows for the same site/taxon/year.
 
-Ambee's optional daily fields use names such as `count_grass_pollen_mean` and `species_weed_mugwort_mean`; they are not API `--count-path` values. The hourly API equivalents are the nested paths in the table. Daily historical species fields are S3-only according to the dictionary, even though the corresponding hourly species fields are API-enabled.
+Ambee's optional daily fields use names such as `count_grass_pollen_mean` and `species_weed_mugwort_mean`; they are not API `--count-path` values. The hourly API equivalents are the nested paths in the table. Daily historical species fields are available through S3, while the corresponding hourly species fields are available through the API.
 
 Airborne pollen concentration is affected by transport and removal and is not identical to source production. Therefore, preparation requires a positive `--concentration-to-production` factor calibrated against source measurements or an inverse transport model. This prevents concentration or pollen-index values from being silently labeled as `grains m-2 yr-1`.
 
