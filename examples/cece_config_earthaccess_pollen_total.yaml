@@ -10,10 +10,10 @@
 #   data/pollen/annual_pollen_production_total_2025.nc
 # via tools/prepare_global_pollen_rf.py download-merra2/aggregate-merra2 and
 # download-ambee (data/pollen/pollen_sites_global.csv is a ready-made global
-# site list). Ambee has no single total-pollen field, so run download-ambee
-# with --taxon total --timestamp-path timestamp and
-# --count-path "Count.grass_pollen+Count.tree_pollen+Count.weed_pollen" to
-# sum its group counts into one aggregate before training.
+# site list). Ambee has no single total-pollen field, so use a count path of
+# "total=Count.grass_pollen+Count.tree_pollen+Count.weed_pollen" to sum the
+# three global pollen-type counts before training. This excludes the separate,
+# optional Species.Others count for unclassified genera.
 #
 # pollen_total is a diagnostic aggregate pool; do not also run this taxon's
 # component schemes (pollen_grass, pollen_ragweed, pollen_birch, etc.)

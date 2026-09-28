@@ -146,15 +146,15 @@ python tools/prepare_global_pollen_rf.py aggregate-merra2 \
   --output data/pollen/merra2_annual_predictors_2025.nc
 ```
 
-Obtain an authorized 2025 historical pollen-count export from a provider such as Ambee. Normalize its columns to `site_id`, `latitude`, `longitude`, `timestamp`, `taxon`, and `pollen_count`, or pass the corresponding `--*-column` options. Ambee API keys must remain in the provider client or environment and must never be committed.
+The accompanying [Ambee Pollen Data Dictionary](../data/pollen/Pollen%20Data%20Dictionary.2026.xlsx) distinguishes historical hourly and daily products. The hourly product is available through the history API and S3; it has UTC `timestamp` records and numeric pollen concentrations in particles/m³. The S3 history is listed back to 2015, with additional historical coverage available on request; the dictionary does not promise the same range through the API. API history access depends on the account: a free account may be restricted to its most recent two days, as in the `HTTP 400 "Only past 2 days data available!"` response. Contact `contactus@getambee.com` to confirm or request full-year API access. The daily historical product is listed as S3-only (not API); it has a local `date` plus `timezone` and daily `_min`, `_max`, and `_mean` concentration values in particles/m³, with S3 history listed back to 2015.
 
-For station-based API retrieval, prepare a sites CSV with `site_id`, `latitude`, and `longitude` columns (`data/pollen/pollen_sites_global.csv` ships a reference set of major cities across every continent for global training coverage), and set `AMBEE_API_KEY` directly in the shell:
+For API retrieval, prepare a sites CSV with `site_id`, `latitude`, and `longitude` columns (`data/pollen/pollen_sites_global.csv` is a reference set of major cities) and set the API key in the shell:
 
 ```bash
 export AMBEE_API_KEY="your-key-here"
 ```
 
-The public endpoint documentation does not guarantee one universal species-count JSON layout, so `--records-path`, `--timestamp-path`, and `--count-path` are deliberately explicit. Discover the real layout for your account and site before running a full year, since Ambee's free trial only returns the past 2 days through `v3/pollen/history` (a longer range returns `HTTP 400 "Only past 2 days data available!"`; email `contactus@getambee.com` for full-year/bulk access):
+Inspect a recent response first to verify the JSON shape and the history range allowed by your account. Use `-G` so curl puts the encoded parameters in the GET query string:
 
 ```bash
 curl -sS -G "https://api.ambeedata.com/v3/pollen/history" \
@@ -166,9 +166,7 @@ curl -sS -G "https://api.ambeedata.com/v3/pollen/history" \
   --data-urlencode "speciesRisk=true" | python -m json.tool
 ```
 
-Note `-G` (not `-X GET`): `--data-urlencode` normally builds a POST body, and `-G` moves those values into the query string so the request is a genuine GET.
-
-A typical response nests per-record group counts under `Count` and per-species counts under `Species`, with the record timestamp in `timestamp` (not the tool's default `updatedAt` — override it):
+The hourly API response uses `data` for records, `timestamp` for UTC time, `Count` for the three top-level pollen types, and `Species` for optional species counts. The field names below come from the dictionary and the nested paths are confirmed by the API response shape:
 
 ```json
 {
@@ -176,9 +174,10 @@ A typical response nests per-record group counts under `Count` and per-species c
     {
       "Count": {"grass_pollen": 0, "tree_pollen": 35, "weed_pollen": 35},
       "Species": {
-        "Grass": {"Grass": 0},
-        "Tree": {"Ash": 0, "Birch": 0, "Elm": 35, "Oak": 0, "Pine": 0},
-        "Weed": {"Ragweed": 35}
+        "Grass": {"Grass": 0, "Sedges": 0},
+        "Tree": {"Elm": 35, "Cypress/Juniper/Cedar": 0},
+        "Weed": {"Ragweed": 35},
+        "Others": 0
       },
       "timestamp": "2026-09-23T20:00:00.000Z"
     }
@@ -186,45 +185,65 @@ A typical response nests per-record group counts under `Count` and per-species c
 }
 ```
 
-Only request taxa your own site's response actually contains; species coverage is region-dependent and an absent field must never be treated as zero. Typical mappings from this layout to CECE taxon aliases:
+Ambee does not document a single `count_total_pollen` field. `Count.grass_pollen + Count.tree_pollen + Count.weed_pollen` is the sum of the three global pollen-type counts and is what this workflow labels `total`. `Species.Others` is a separate optional count for unclassified genera and is not included in that three-type total; keep it as its own training class unless Ambee confirms it is non-overlapping and should be added. Do not sum group counts and their member species together: species counts are subdivisions, not extra counts. Risk fields are categorical strings, not concentration values, and must not be used as `pollen_count`.
 
-| CECE taxon | `--taxon` | `--count-path` |
+Use repeated `--count-path TAXON=PATH` arguments to extract many outputs from each API response (rather than repeating the same billable request per taxon). Common paths and dictionary coverage are:
+
+| Group | Label/path suffix | Reported coverage |
 |---|---|---|
-| Grass | `grass` | `Species.Grass.Grass` |
-| Ash | `ash` | `Species.Tree.Ash` |
-| Birch | `birch` | `Species.Tree.Birch` |
-| Cypress/juniper/cedar group | `cypress` | `Species.Tree.Cypress/Juniper/Cedar` |
-| Elm | `elm` | `Species.Tree.Elm` |
-| Maple | `maple` | `Species.Tree.Maple` |
-| Oak | `oak` | `Species.Tree.Oak` |
-| Pine | `pine` | `Species.Tree.Pine` |
-| Cottonwood/poplar | `cottonwood` | `Species.Tree.Poplar/Cottonwood` |
-| Ragweed | `ragweed` | `Species.Weed.Ragweed` |
-| Total (aggregate) | `total` | `Count.grass_pollen+Count.tree_pollen+Count.weed_pollen` |
+| Type totals | `total=Count.grass_pollen+Count.tree_pollen+Count.weed_pollen` | Global; total of the three types |
+| Grass | `grass=Species.Grass.Grass` | All listed regions |
+| Sedges | `sedges=Species.Grass.Sedges` | Australia and Oceania |
+| Acacia | `acacia=Species.Tree.Acacia` | Australia and Oceania |
+| Alder | `alder=Species.Tree.Alder` | Africa, Asia, Europe, North America |
+| Ash | `ash=Species.Tree.Ash` | North and South America |
+| Birch | `birch=Species.Tree.Birch` | All listed regions |
+| Cypress | `cypress=Species.Tree.Cypress` | Australia and Oceania |
+| Cypress/juniper/cedar | `cypress_group=Species.Tree.Cypress/Juniper/Cedar` | North and South America |
+| Cypress/yew | `cypress_yew=Species.Tree.Cypress/Yew` | Africa, Asia, Europe, North America |
+| Elm | `elm=Species.Tree.Elm` | All listed regions |
+| Hazel | `hazel=Species.Tree.Hazel` | Africa, Asia, Europe, North America |
+| Maple | `maple=Species.Tree.Maple` | North and South America |
+| Mulberry | `mulberry=Species.Tree.Mulberry` | North and South America |
+| Myrtle | `myrtle=Species.Tree.Myrtle` | Australia and Oceania |
+| Oak | `oak=Species.Tree.Oak` | All listed regions |
+| Olive | `olive=Species.Tree.Olive` | Africa, Asia, Australia/Oceania, Europe, North America |
+| Pine | `pine=Species.Tree.Pine` | All listed regions |
+| Plane | `plane=Species.Tree.Plane` | Africa, Asia, Europe, North America |
+| Poplar/cottonwood | `cottonwood=Species.Tree.Poplar/Cottonwood` | All listed regions |
+| She-oak | `she_oak=Species.Tree.She-oak` | Australia and Oceania |
+| Willow | `willow=Species.Tree.Willow` | Australia and Oceania |
+| Chenopod | `chenopod=Species.Weed.Chenopod` | Africa, Asia, Australia/Oceania, Europe, North America |
+| Daisy | `daisy=Species.Weed.Daisy` | Australia and Oceania |
+| Dock | `dock=Species.Weed.Dock` | Australia and Oceania |
+| Mugwort | `mugwort=Species.Weed.Mugwort` | Africa, Asia, Europe, North America |
+| Nettle | `nettle=Species.Weed.Nettle` | Africa, Asia, Europe, North America |
+| Plantain | `plantain=Species.Weed.Plantain` | Australia and Oceania |
+| Ragweed | `ragweed=Species.Weed.Ragweed` | All listed regions |
+| Other genera | `others=Species.Others` | Optional; unclassified genera |
 
-Ambee groups juniper and cedar into `Cypress/Juniper/Cedar`; don't also run a separate `pollen_juniper` extraction from that same combined value, or the two taxa would double-count the same pollen. There is no single `pollen_total` field in Ambee's response, so `--count-path` accepts `+`-joined dot paths and sums them; use this only for genuine aggregates such as the total across grass, tree, and weed groups.
+Region coverage is provider-documented availability, not a guarantee that a field is populated at every site or time. For optional species, pass `--missing-count-paths skip`; absent values produce no row for that taxon-record, never an assumed zero. By default, missing paths are errors, which is useful for required group totals. A slash inside a final JSON key (such as `Cypress/Juniper/Cedar`) is literal; dots separate nested keys. Keep the combined cypress/juniper/cedar count as one class; assigning it to both cypress and juniper double-counts it. Some Ambee taxa have no built-in CECE alias; they can be prepared and trained under a distinct label, but require a registered custom pollen scheme before CECE can run them.
+
+This request writes total type counts, selected species counts, and `others` from one hourly API pass. Remove or add taxon/path pairs to match your study and the fields actually returned for those sites. The output includes `temporal_resolution=hourly` and `pollen_count_units=particles/m3`:
 
 ```bash
 python tools/prepare_global_pollen_rf.py download-ambee \
   data/pollen/pollen_sites_global.csv \
-  data/pollen/ambee_pollen_history_2025_elm.csv \
+  data/pollen/ambee_pollen_history_2025_selected.csv \
   --year 2025 \
-  --taxon elm \
   --records-path data \
   --timestamp-path timestamp \
-  --count-path Species.Tree.Elm
-
-python tools/prepare_global_pollen_rf.py download-ambee \
-  data/pollen/pollen_sites_global.csv \
-  data/pollen/ambee_pollen_history_2025_total.csv \
-  --year 2025 \
-  --taxon total \
-  --records-path data \
-  --timestamp-path timestamp \
-  --count-path "Count.grass_pollen+Count.tree_pollen+Count.weed_pollen"
+  --count-path "total=Count.grass_pollen+Count.tree_pollen+Count.weed_pollen" \
+  --count-path grass=Species.Grass.Grass \
+  --count-path elm=Species.Tree.Elm \
+  --count-path mugwort=Species.Weed.Mugwort \
+  --count-path others=Species.Others \
+  --missing-count-paths skip
 ```
 
-Mugwort/Artemisia, chenopod, nettle, alder, hazel, olive, and plane did not appear at all in the sample response above; confirm each of those fields actually exists in your own site's payload (run the discovery `curl` per site/region) before assuming Ambee reports them there.
+`download-ambee` retrieves the hourly API product; it does not download Ambee's historical daily S3 product. For daily S3 files, use the daily `_mean` fields for the concentration time series (not the categorical risk fields or the daily min/max extrema), normalize the export to `site_id`, `latitude`, `longitude`, `date`, `taxon`, and `pollen_count`, then pass `--time-column date` and `--count-column pollen_count` to `prepare-training`. Preserve the provider's local date and timezone in the source data/provenance; the training preparer parses the selected date column as UTC and does not apply the separate timezone field. Daily data can be integrated as one 24-hour observation per date; do not combine hourly and daily rows for the same site/taxon/year.
+
+Ambee's optional daily fields use names such as `count_grass_pollen_mean` and `species_weed_mugwort_mean`; they are not API `--count-path` values. The hourly API equivalents are the nested paths in the table. Daily historical species fields are S3-only according to the dictionary, even though the corresponding hourly species fields are API-enabled.
 
 Airborne pollen concentration is affected by transport and removal and is not identical to source production. Therefore, preparation requires a positive `--concentration-to-production` factor calibrated against source measurements or an inverse transport model. This prevents concentration or pollen-index values from being silently labeled as `grains m-2 yr-1`.
 
@@ -232,7 +251,7 @@ The preparer infers each site's reporting cadence, integrates concentration in c
 
 ```bash
 python tools/prepare_global_pollen_rf.py prepare-training \
-  data/pollen/ambee_pollen_history_2025_mugwort.csv \
+  data/pollen/ambee_pollen_history_2025_selected.csv \
   data/pollen/merra2_annual_predictors_2025.nc \
   data/pollen/mugwort_training_2025.csv \
   --year 2025 \
@@ -295,9 +314,9 @@ export EARTHDATA_TOKEN=<NASA-Earthdata-token>
 
 The example expects `data/pollen/annual_pollen_production_mugwort_2025.nc`, generated by the global 2025 workflow above. Earthdata credentials can alternatively be supplied through `~/.netrc`; see `docs/examples.md` for live and staged Earthaccess operation.
 
-`examples/cece_config_earthaccess_pollen_total.yaml` runs only the aggregate `pollen_total` scheme, matching the summed `--count-path "Count.grass_pollen+Count.tree_pollen+Count.weed_pollen"` Ambee export shown above. It expects `data/pollen/annual_pollen_production_total_2025.nc`. Don't run this alongside per-species schemes (`pollen_grass`, `pollen_ragweed`, `pollen_birch`, etc.) trained from the same Ambee export in the same simulation, since their emissions are already folded into the total and would otherwise be double counted.
+`examples/cece_config_earthaccess_pollen_total.yaml` runs only the `pollen_total` scheme trained from the sum of Ambee's three global type counts (grass + tree + weed); it excludes the separate optional `Species.Others` count. It expects `data/pollen/annual_pollen_production_total_2025.nc`. Don't run this alongside per-species schemes (`pollen_grass`, `pollen_ragweed`, `pollen_birch`, etc.) trained from the same Ambee export in the same simulation, since their emissions are already folded into the total and would otherwise be double counted.
 
-`examples/cece_config_earthaccess_pollen_all_taxa.yaml` demonstrates every distinct built-in taxon alias plus `pollen_total`. It expects `data/pollen/annual_pollen_production_all_taxa_2025.nc` containing `{taxon}_pannual`, `{taxon}_sdoy`, and `{taxon}_edoy` variables. `pollen_artemisia` is omitted because it is synonymous with the included `pollen_mugwort` pool. Remove any taxon not actually available from your observation provider at your sites — for example, Ambee reports juniper and cedar merged into `pollen_cypress`'s `Species.Tree.Cypress/Juniper/Cedar` field with no separate juniper count, so don't train and instantiate both `pollen_cypress` and `pollen_juniper` from that same Ambee export.
+`examples/cece_config_earthaccess_pollen_all_taxa.yaml` demonstrates every distinct built-in taxon alias plus `pollen_total`. It expects `data/pollen/annual_pollen_production_all_taxa_2025.nc` containing `{taxon}_pannual`, `{taxon}_sdoy`, and `{taxon}_edoy` variables. `pollen_artemisia` is omitted because it is synonymous with the included `pollen_mugwort` pool. Remove any taxon not actually available from your observation provider at your sites. Ambee documents separate Cypress, Cypress/Juniper/Cedar, and Cypress/Yew fields in different regions; do not train both `pollen_cypress` and `pollen_juniper` from the same combined `Species.Tree.Cypress/Juniper/Cedar` value.
 
 After training each taxon separately, consolidate the products without changing their coordinates:
 

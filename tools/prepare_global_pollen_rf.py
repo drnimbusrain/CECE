@@ -7,6 +7,7 @@ import argparse
 import glob
 import math
 import os
+import sys
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -43,22 +44,32 @@ def parse_args() -> argparse.Namespace:
     )
     ambee.add_argument("output_csv", type=Path)
     ambee.add_argument("--year", type=int, default=2025)
-    ambee.add_argument("--taxon", required=True)
+    ambee.add_argument(
+        "--taxon",
+        help="Taxon label for one unlabelled --count-path (legacy single-taxon mode)",
+    )
     ambee.add_argument(
         "--records-path", default="data", help="Dot path to the response record list"
     )
     ambee.add_argument(
-        "--timestamp-path", default="updatedAt", help="Dot path within each record"
+        "--timestamp-path", default="timestamp", help="Dot path within each record"
     )
     ambee.add_argument(
         "--count-path",
+        action="append",
         required=True,
         help=(
-            "Dot path within each record to the numeric pollen count. "
-            "Join multiple dot paths with '+' to sum group counts into an "
-            "aggregate (e.g. 'Count.grass_pollen+Count.tree_pollen+Count.weed_pollen' "
-            "for pollen_total)"
+            "Repeat as TAXON=dot.path to extract several taxa from each API "
+            "record; join dot paths with '+' to sum fields (e.g. "
+            "'total=Count.grass_pollen+Count.tree_pollen+Count.weed_pollen'). "
+            "A single unlabelled path can be used with --taxon."
         ),
+    )
+    ambee.add_argument(
+        "--missing-count-paths",
+        choices=("error", "skip"),
+        default="error",
+        help="When an optional regional species field is absent, skip that taxon-record instead of failing",
     )
     ambee.add_argument("--chunk-days", type=int, default=7)
     ambee.add_argument("--request-delay-seconds", type=float, default=0.25)
@@ -148,8 +159,60 @@ def nested_value(value: object, path: str) -> object:
 
 
 def nested_count(record: object, count_path: str) -> float:
-    """Resolve --count-path, summing '+'-joined dot paths for aggregate taxa (e.g. total pollen)."""
-    return sum(float(nested_value(record, part)) for part in count_path.split("+"))
+    """Resolve one numeric path or sum '+'-joined paths in a provider record."""
+    paths = [part.strip() for part in count_path.split("+")]
+    if not paths or any(not path for path in paths):
+        raise ValueError(f"Invalid Ambee count path: {count_path!r}")
+    counts = []
+    for path in paths:
+        value = nested_value(record, path)
+        if value is None:
+            raise KeyError(f"Ambee count path '{path}' is null")
+        count = float(value)
+        if not math.isfinite(count):
+            raise ValueError(f"Ambee count path '{path}' is not finite")
+        counts.append(count)
+    return sum(counts)
+
+
+def parse_count_specs(taxon: str | None, count_paths: list[str]) -> list[tuple[str, str]]:
+    specs = []
+    for spec in count_paths:
+        if "=" in spec:
+            if taxon:
+                raise ValueError("Do not combine --taxon with labelled TAXON=PATH count paths")
+            label, path = spec.split("=", 1)
+            if not label.strip() or not path.strip():
+                raise ValueError(f"Invalid --count-path {spec!r}; expected TAXON=PATH")
+            specs.append((label.strip(), path.strip()))
+        else:
+            if not taxon or len(count_paths) != 1:
+                raise ValueError(
+                    "Use repeated --count-path TAXON=PATH entries, or one unlabelled "
+                    "--count-path together with --taxon"
+                )
+            specs.append((taxon, spec.strip()))
+    labels = [label for label, _ in specs]
+    if len(labels) != len(set(labels)):
+        raise ValueError("Each --count-path must use a unique taxon label")
+    return specs
+
+
+def resolve_record_counts(
+    record: object, count_specs: list[tuple[str, str]], missing_count_paths: str
+) -> tuple[list[tuple[str, float]], int]:
+    resolved = []
+    skipped = 0
+    for taxon, count_path in count_specs:
+        try:
+            count = nested_count(record, count_path)
+        except KeyError:
+            if missing_count_paths == "error":
+                raise
+            skipped += 1
+            continue
+        resolved.append((taxon, count))
+    return resolved, skipped
 
 
 def download_ambee(args: argparse.Namespace) -> None:
@@ -162,6 +225,7 @@ def download_ambee(args: argparse.Namespace) -> None:
         raise ValueError(
             "Ambee chunk days must be positive and request delay must be non-negative"
         )
+    count_specs = parse_count_specs(args.taxon, args.count_path)
     sites = pd.read_csv(args.sites_csv)
     required = {"site_id", "latitude", "longitude"}
     missing = sorted(required - set(sites.columns))
@@ -173,6 +237,7 @@ def download_ambee(args: argparse.Namespace) -> None:
     start = datetime(args.year, 1, 1, tzinfo=UTC)
     stop = datetime(args.year + 1, 1, 1, tzinfo=UTC)
     rows = []
+    skipped_count_paths = 0
     for site in sites.itertuples(index=False):
         chunk_start = start
         while chunk_start < stop:
@@ -196,16 +261,24 @@ def download_ambee(args: argparse.Namespace) -> None:
                     f"Ambee --records-path '{args.records_path}' must resolve to a list"
                 )
             for record in records:
-                rows.append(
-                    {
-                        "site_id": site.site_id,
-                        "latitude": float(site.latitude),
-                        "longitude": float(site.longitude),
-                        "timestamp": nested_value(record, args.timestamp_path),
-                        "taxon": args.taxon,
-                        "pollen_count": nested_count(record, args.count_path),
-                    }
+                timestamp = nested_value(record, args.timestamp_path)
+                record_counts, skipped = resolve_record_counts(
+                    record, count_specs, args.missing_count_paths
                 )
+                skipped_count_paths += skipped
+                for taxon, pollen_count in record_counts:
+                    rows.append(
+                        {
+                            "site_id": site.site_id,
+                            "latitude": float(site.latitude),
+                            "longitude": float(site.longitude),
+                            "timestamp": timestamp,
+                            "taxon": taxon,
+                            "pollen_count": pollen_count,
+                            "temporal_resolution": "hourly",
+                            "pollen_count_units": "particles/m3",
+                        }
+                    )
             chunk_start = chunk_stop
             if args.request_delay_seconds:
                 time.sleep(args.request_delay_seconds)
@@ -215,6 +288,11 @@ def download_ambee(args: argparse.Namespace) -> None:
     )
     if output.empty:
         raise RuntimeError("Ambee returned no records for the requested sites and year")
+    if skipped_count_paths:
+        print(
+            f"Skipped {skipped_count_paths} taxon-record count paths missing from Ambee responses",
+            file=sys.stderr,
+        )
     args.output_csv.parent.mkdir(parents=True, exist_ok=True)
     output.to_csv(args.output_csv, index=False)
 
