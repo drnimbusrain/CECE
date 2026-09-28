@@ -146,7 +146,13 @@ python tools/prepare_global_pollen_rf.py aggregate-merra2 \
   --output data/pollen/merra2_annual_predictors_2025.nc
 ```
 
-Ambee provides hourly historical pollen through the history API and S3. Hourly records use UTC `timestamp` values and numeric pollen concentrations in particles/m³. S3 hourly history extends back to 2015, with additional historical coverage available on request; API history range depends on the account. A free account may be restricted to its most recent two days, as in the `HTTP 400 "Only past 2 days data available!"` response. Contact `contactus@getambee.com` to confirm or request full-year API access. Daily historical pollen is available through S3, not the history API; it uses a local `date`, a `timezone`, and daily `_min`, `_max`, and `_mean` concentration values in particles/m³.
+Ambee documents hourly pollen history through its [history API](https://docs.ambeedata.com/apis/pollen) and offers a separate [bulk historical pollen product](https://www.getambee.com/historical-pollen-count-data). API records use UTC `timestamp` values and numeric pollen concentrations in particles/m³. Available history, regions, and product access depend on the account and contract. In one account test, a request beyond the latest two days returned `HTTP 400 "Only past 2 days data available!"`; this is not a universal statement about every free plan. Daily historical data may be provided through the bulk product rather than the API. Confirm its schema and allowed timeframe with Ambee.
+
+**Usage authorization**
+
+Ambee's [Terms and Conditions](https://www.getambee.com/terms-and-conditions) describe a limited, non-commercial license for personal or internal business use, state that APIs may have additional terms, and restrict copying, derivative works, distribution, and commercial exploitation without permission. The API documentation describes endpoints and parameters; it is not by itself a grant of data rights. Before using this workflow, review the current terms accepted for your account and obtain written Ambee authorization (contact `contactus@getambee.com`) that explicitly covers the planned automated request volume/locations/date range, local storage and retention, use for scientific analysis or machine-learning/RF training, creation/use of derived model or climatology files, and any publication, sharing, redistribution, and required attribution. Do not infer those rights from having an API key, a successful request, or access to a downloadable product. If the account terms do not clearly authorize an activity, do not perform it until Ambee confirms in writing. Follow account-specific request quotas and rate limits; the public API page does not state a universal quota. Use the documented API, not scraping of Ambee's website or application. This guidance is not a legal determination.
+
+Treat raw responses, normalized CSVs, trained models, and climatologies as provider-restricted unless your written license says otherwise. Keep them out of public repositories and shared outputs unless that license explicitly permits storage and distribution. Check retention/deletion requirements if access or the contract ends.
 
 For API retrieval, prepare a sites CSV with `site_id`, `latitude`, and `longitude` columns (`data/pollen/pollen_sites_global.csv` is a reference set of major cities) and set the API key in the shell:
 
@@ -187,7 +193,7 @@ The hourly API response uses `data` for records, `timestamp` for UTC time, `Coun
 
 Ambee does not document a single `count_total_pollen` field. `Count.grass_pollen + Count.tree_pollen + Count.weed_pollen` is the sum of the three global pollen-type counts and is what this workflow labels `total`. `Species.Others` is a separate optional count for unclassified genera and is not included in that three-type total; keep it as its own training class unless Ambee confirms it is non-overlapping and should be added. Do not sum group counts and their member species together: species counts are subdivisions, not extra counts. Risk fields are categorical strings, not concentration values, and must not be used as `pollen_count`.
 
-Use repeated `--count-path TAXON=PATH` arguments to extract many outputs from each API response (rather than repeating the same billable request per taxon). Common paths and reported regional coverage are:
+Use repeated `--count-path TAXON=PATH` arguments to extract many outputs from each permitted API response, reducing redundant calls compared with fetching once per taxon. Every request remains subject to your account's quotas and rate limits. Common paths and reported regional coverage are:
 
 | Group | Label/path suffix | Reported coverage |
 |---|---|---|
@@ -245,7 +251,7 @@ python tools/prepare_global_pollen_rf.py download-ambee \
 
 Ambee's optional daily fields use names such as `count_grass_pollen_mean` and `species_weed_mugwort_mean`; they are not API `--count-path` values. The hourly API equivalents are the nested paths in the table. Daily historical species fields are available through S3, while the corresponding hourly species fields are available through the API.
 
-Airborne pollen concentration is affected by transport and removal and is not identical to source production. Therefore, preparation requires a positive `--concentration-to-production` factor calibrated against source measurements or an inverse transport model. This prevents concentration or pollen-index values from being silently labeled as `grains m-2 yr-1`.
+Only use `prepare-training` and `train_pollen_rf.py` with Ambee data if your written authorization covers retention, analysis/model training, and the resulting derived climatology/model files. Airborne pollen concentration is affected by transport and removal and is not identical to source production. Therefore, preparation requires a positive `--concentration-to-production` factor calibrated against source measurements or an inverse transport model. This prevents concentration or pollen-index values from being silently labeled as `grains m-2 yr-1`.
 
 The preparer infers each site's reporting cadence, integrates concentration in concentration-days, and defaults to retaining only sites with at least 75% annual temporal coverage. Adjust `--minimum-coverage-fraction` only when the observation product has a documented seasonal sampling design.
 

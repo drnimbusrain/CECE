@@ -1,6 +1,8 @@
 # =====================================================================
 # CECE Pollen Example: All Built-in Taxa + Earthaccess MERRA-2
 # =====================================================================
+# Ambee-derived inputs require account-specific rights for retrieval, storage,
+# training, and output use; see the authorization note in docs/pollen.md.
 # This configuration instantiates every distinct built-in taxon alias.
 # pollen_artemisia is a synonym of pollen_mugwort and is intentionally not
 # instantiated concurrently. pollen_total is an aggregate tracer and should

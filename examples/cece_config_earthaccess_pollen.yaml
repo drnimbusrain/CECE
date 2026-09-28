@@ -1,6 +1,8 @@
 # =====================================================================
 # CECE Pollen Example: RF Climatology + Earthaccess MERRA-2 Meteorology
 # =====================================================================
+# Ambee-derived inputs require account-specific rights for retrieval, storage,
+# training, and output use; see the authorization note in docs/pollen.md.
 # Prerequisites:
 #   python -m pip install -e '.[cloud,pollen]'
 #   export EARTHDATA_TOKEN=<NASA-Earthdata-token>

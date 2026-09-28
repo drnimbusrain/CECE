@@ -37,7 +37,8 @@ def parse_args() -> argparse.Namespace:
     )
 
     ambee = subparsers.add_parser(
-        "download-ambee", help="Download historical pollen at configured training sites"
+        "download-ambee",
+        help="Download authorized historical pollen at configured training sites",
     )
     ambee.add_argument(
         "sites_csv", type=Path, help="CSV with site_id, latitude, and longitude"

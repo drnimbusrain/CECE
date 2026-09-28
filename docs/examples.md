@@ -50,6 +50,8 @@ For complete technical details about how these features work, see the [Stacking 
 | earthaccess pollen total | MERRA-2 0.625°×0.5° | Total (aggregate) pollen | Aggregate RF climatology summed from provider group counts, plus shared online meteorology |
 | earthaccess pollen all taxa | MERRA-2 0.625°×0.5° | 18 taxa + total pollen | Consolidated taxon RF/phenology file plus shared online meteorology |
 
+Ambee-derived pollen inputs are not bundled or automatically licensed by these examples. Before retrieving or using Ambee data, confirm that your account-specific terms authorize the planned requests, storage, model training, and any sharing of outputs; see the usage authorization note in [Pollen Emissions](pollen.md).
+
 ---
 
 ## Installing Cloud Extras for Earthdata Tests
