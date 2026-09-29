@@ -17,9 +17,8 @@ Both schemes execute CECE code; `hemco_3_12_1` does not launch HEMCO, and
 separate calculation path, not another name for `megan21`.
 
 Use the [standalone example](../examples/cece_config_megan3.yaml) and the
-[method-selection instructions](#standalone-driver-setup) below. The existing
-Fortran registrations remain available; the C++ method selector and effective
-history options documented here do not add those options to the Fortran bridges.
+[method-selection instructions](#standalone-driver-setup) below. Both schemes
+are supported through their C++ implementations.
 
 ---
 
@@ -30,7 +29,6 @@ The original scheme computes isoprene emissions using activity factors for LAI, 
 ### Registration Names
 
 - Native C++: `"megan"`
-- Fortran bridge: `"megan_fortran"`
 
 ### Emission methods
 
@@ -144,7 +142,6 @@ The C++ MEGAN3-class scheme computes 19 class totals using bulk activity factors
 ### Registration Names
 
 - Native C++: `"megan3"`
-- Fortran bridge: `"megan3_fortran"`
 
 ### 19 Emission Classes
 
