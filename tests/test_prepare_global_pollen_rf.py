@@ -53,6 +53,6 @@ def test_missing_optional_species_is_skipped_without_zero_filling():
         ("elm", "Species.Tree.Elm"),
     ]
 
-    assert resolve_record_counts(record, specs, "skip") == ([('grass', 4.0)], 1)
+    assert resolve_record_counts(record, specs, "skip") == ([("grass", 4.0)], 1)
     with pytest.raises(KeyError):
         resolve_record_counts(record, specs, "error")

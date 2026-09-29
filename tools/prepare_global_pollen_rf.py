@@ -176,12 +176,16 @@ def nested_count(record: object, count_path: str) -> float:
     return sum(counts)
 
 
-def parse_count_specs(taxon: str | None, count_paths: list[str]) -> list[tuple[str, str]]:
+def parse_count_specs(
+    taxon: str | None, count_paths: list[str]
+) -> list[tuple[str, str]]:
     specs = []
     for spec in count_paths:
         if "=" in spec:
             if taxon:
-                raise ValueError("Do not combine --taxon with labelled TAXON=PATH count paths")
+                raise ValueError(
+                    "Do not combine --taxon with labelled TAXON=PATH count paths"
+                )
             label, path = spec.split("=", 1)
             if not label.strip() or not path.strip():
                 raise ValueError(f"Invalid --count-path {spec!r}; expected TAXON=PATH")
