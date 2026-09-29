@@ -675,8 +675,7 @@ RC_GTEST_PROP(Megan3SchemeProperty, Property17_MissingConfigDefaultValues, ()) {
     }
 }
 
-
-}  // namespace cece (close for property tests above)
+}  // namespace cece
 
 // ============================================================================
 // Unit Tests for Megan3Scheme (Task 7.4)
