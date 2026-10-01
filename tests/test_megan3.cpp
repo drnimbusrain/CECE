@@ -681,8 +681,10 @@ RC_GTEST_PROP(Megan3SchemeProperty, Property17_MissingConfigDefaultValues, ()) {
 // Unit Tests for Megan3Scheme (Task 7.4)
 // ============================================================================
 
+#include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <random>
 
 #include "cece/cece_physics_factory.hpp"
 #include "cece/physics/cece_megan3.hpp"
@@ -711,9 +713,18 @@ class Megan3SchemeTest : public ::testing::Test {
     std::filesystem::path tmp_dir;
 
     void SetUp() override {
-        // Create temp directory for speciation files
-        tmp_dir = std::filesystem::temp_directory_path() / "cece_test_megan3";
-        std::filesystem::create_directories(tmp_dir);
+        // CTest can launch individual cases concurrently. Claim a private
+        // directory atomically so fixtures cannot overwrite each other's YAML.
+        const auto parent = std::filesystem::temp_directory_path();
+        const auto seed = std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + "_" + std::to_string(std::random_device{}());
+        for (int attempt = 0; attempt < 100; ++attempt) {
+            const auto candidate = parent / ("cece_test_megan3_" + seed + "_" + std::to_string(attempt));
+            if (std::filesystem::create_directory(candidate)) {
+                tmp_dir = candidate;
+                break;
+            }
+        }
+        ASSERT_FALSE(tmp_dir.empty()) << "Unable to create an isolated test directory";
 
         // Write minimal SPC file (mechanism species)
         {
@@ -759,7 +770,7 @@ class Megan3SchemeTest : public ::testing::Test {
     }
 
     void TearDown() override {
-        std::filesystem::remove_all(tmp_dir);
+        if (!tmp_dir.empty()) std::filesystem::remove_all(tmp_dir);
     }
 
     [[nodiscard]] DualView3D create_dv(const std::string& name, double val) const {

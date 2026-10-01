@@ -169,16 +169,20 @@ The C++ MEGAN3-class scheme computes 19 class totals using bulk activity factors
 
 ### Gamma Factors
 
-For each emission class, the scheme computes:
+For each vegetation emission class (soil NO is handled separately), the scheme uses:
 
 - **γ_T_LI** — Light-independent temperature response (exponential β formulation)
 - **γ_T_LD** — Light-dependent temperature response (Guenther et al. 2012)
 - **γ_PAR** — PAR response via PCEEA algorithm
 - **γ_LAI** — Leaf area index correction
 - **γ_age** — Leaf age (new/growing/mature/old fractions)
-- **γ_SM** — Soil moisture
+- **γ_SM** — Currently neutral (1), including when `soil_moisture_root` is supplied
 - **γ_CO₂** — CO₂ inhibition (Possell or Wilkinson)
-- **γ_stress** — Wind/temperature/air quality stress (optional)
+- **γ_stress** — Wind and temperature stress (optional)
+
+The `enable_aq_stress` setting is parsed but is not applied by
+`Megan3Scheme::Run`. These limitations describe the current bulk C++ calculation;
+the separate canopy helpers below are also not part of that runtime calculation.
 
 Combined via LDF partitioning:
 
