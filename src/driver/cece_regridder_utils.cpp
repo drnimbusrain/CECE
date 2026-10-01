@@ -171,7 +171,8 @@ static std::vector<double> read_rectilinear_bounds(amio_dataset_handle dataset, 
     const auto bounds = read_coordinate_array(dataset, bounds_name, false, false, points);
     if (static_cast<size_t>(points) != 2 * static_cast<size_t>(count)) throw std::runtime_error("CF rectilinear bounds count mismatch");
     for (int i = 0; i < count; ++i) {
-        const double lo = bounds[2 * i], hi = bounds[2 * i + 1], centre = centres[i];
+        const size_t offset = 2 * static_cast<size_t>(i);
+        const double lo = bounds[offset], hi = bounds[offset + 1], centre = centres[i];
         if (!std::isfinite(lo) || !std::isfinite(hi) || !std::isfinite(centre) || !(lo < hi) || centre < lo || centre > hi ||
             (latitude ? (lo < -90.0 || hi > 90.0) : (hi - lo > 180.0))) {
             throw std::runtime_error("Invalid CF rectilinear cell bounds: " + bounds_name);
@@ -202,8 +203,10 @@ static axis::topology::UnstructuredMesh<Kokkos::HostSpace> load_rectilinear_mesh
     for (int j = 0; j < nband; ++j) {
         for (int i = 0; i < nx; ++i) {
             const size_t cell = static_cast<size_t>(j) * nx + i, first = cell * 4;
-            const double west = lon_bounds[2 * i], east = lon_bounds[2 * i + 1];
-            const double south = lat_bounds[2 * (j0 + j)], north = lat_bounds[2 * (j0 + j) + 1];
+            const size_t longitude_offset = 2 * static_cast<size_t>(i);
+            const size_t latitude_offset = 2 * (static_cast<size_t>(j0) + static_cast<size_t>(j));
+            const double west = lon_bounds[longitude_offset], east = lon_bounds[longitude_offset + 1];
+            const double south = lat_bounds[latitude_offset], north = lat_bounds[latitude_offset + 1];
             nodes(first, 0) = west;
             nodes(first, 1) = south;
             nodes(first + 1, 0) = east;
