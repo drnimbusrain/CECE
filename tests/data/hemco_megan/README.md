@@ -6,12 +6,6 @@ same source equations through a separate-language transcription, but it
 is not output from the HEMCO executable and is not evidence of a gridded
 HEMCO-versus-CECE runtime parity run.
 
-This file is carried into this branch from PR #90
-(`feat(megan): add HEMCO 3.12.1 stateless global isoprene parity to CECE`,
-branch `feat/hemco-megan-3121-parity`) solely as comparison reference data for
-`scripts/run_bdsnp_megan3_4x5_global_test.py`; PR #90 itself has not been
-merged here.
-
 ## Provenance
 
 - Repository: `https://github.com/geoschem/HEMCO`
@@ -19,7 +13,14 @@ merged here.
 - Commit: `07da3c29fd85abc3824cb6288578b0b68c2395a3`
 - Source: `src/Extensions/hcox_megan_mod.F90`
 - Source SHA-256: `a298e4003210c7dba86c53cdd37f85a868dcb3a89b3de56ab175257e04614f31`
-- Generator: `scripts/generate_hemco_megan_oracle.py` (PR #90)
+- Generator: `scripts/generate_hemco_megan_oracle.py`
+
+Regenerate the file with:
+
+```console
+python scripts/generate_hemco_megan_oracle.py \
+  > tests/data/hemco_megan/hemco_3_12_1_megan_reference.csv
+```
 
 ## Source contract represented by the vectors
 
@@ -36,11 +37,14 @@ merged here.
 | Reference date | 20 June 2021, DOY 171 |
 | Reference CO₂ choice | inhibition enabled, 390 ppm |
 
-The CSV stores the dimensionless activity factor per unit effective AEF.
+The CSV stores the dimensionless activity factor per unit effective AEF. In
+this stateless CECE mode, the caller-supplied scalar `aef` must already include
+any HEMCO PFT/AEF preprocessing and `ISOP_SCALING` intended for the case.
 
 ## Limits
 
 The vectors use spatially uniform scalar AEF and history settings. They do not
 cover HEMCO's evolving gridded 5-day/12-hour history state, restart
 equivalence, solar-angle calculation from latitude/local time, gridded PFT/AEF
-preprocessing, or mixed-precision diagnostic output.
+preprocessing, or mixed-precision diagnostic output. The C++ tests use a
+relative tolerance of `1e-12` for the source-derived scalar values.

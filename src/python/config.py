@@ -201,7 +201,7 @@ class PhysicsSchemeConfig:
 
     Examples
     --------
-    >>> scheme = PhysicsSchemeConfig(name="megan", language="fortran")
+    >>> scheme = PhysicsSchemeConfig(name="megan", language="cpp")
     >>> scheme.validate()
     """
 
