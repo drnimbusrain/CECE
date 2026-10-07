@@ -763,7 +763,7 @@ class CeceConfig:
         try:
             config_dict = yaml.safe_load(yaml_str)
             if not isinstance(config_dict, dict):
-                raise ValueError("YAML must represent a dictionary")
+                raise TypeError("YAML must represent a dictionary")
             return cls.from_dict(config_dict)
         except yaml.YAMLError as e:
             raise ValueError(f"Invalid YAML: {e!s}")

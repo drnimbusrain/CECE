@@ -14,9 +14,10 @@ import argparse
 import os
 import re
 import time
+from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Iterable, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 import yaml
@@ -29,7 +30,7 @@ def _load_coords(path: Path) -> np.ndarray:
     )
 
 
-def _bounding_box_from_grid(grid: dict) -> Optional[Tuple[float, float, float, float]]:
+def _bounding_box_from_grid(grid: dict) -> tuple[float, float, float, float] | None:
     required = ("lon_min", "lon_max", "lat_min", "lat_max")
     if not all(key in grid for key in required):
         return None
@@ -41,7 +42,7 @@ def _bounding_box_from_grid(grid: dict) -> Optional[Tuple[float, float, float, f
     )
 
 
-def _earthaccess_streams(config: dict) -> List[dict]:
+def _earthaccess_streams(config: dict) -> list[dict]:
     grid = config.get("driver", {}).get("grid", {}) or {}
     streams = []
     for stream in config.get("cece_data", {}).get("streams", []) or []:
@@ -54,7 +55,7 @@ def _earthaccess_streams(config: dict) -> List[dict]:
     return streams
 
 
-def _mapping_target_and_transform(mapping: Any) -> Tuple[str, Optional[str]]:
+def _mapping_target_and_transform(mapping: Any) -> tuple[str, str | None]:
     if isinstance(mapping, str):
         return mapping, None
     if isinstance(mapping, dict):
@@ -65,7 +66,7 @@ def _mapping_target_and_transform(mapping: Any) -> Tuple[str, Optional[str]]:
     raise TypeError("earthaccess variable mapping must be a string or mapping dict")
 
 
-def _mapping_fill_value(mapping: Any) -> Optional[float]:
+def _mapping_fill_value(mapping: Any) -> float | None:
     if not isinstance(mapping, dict) or mapping.get("fill_value") is None:
         return None
     fill_value = float(mapping["fill_value"])
@@ -74,7 +75,7 @@ def _mapping_fill_value(mapping: Any) -> Optional[float]:
     return fill_value
 
 
-def _apply_transform(values: np.ndarray, transform: Optional[str]) -> np.ndarray:
+def _apply_transform(values: np.ndarray, transform: str | None) -> np.ndarray:
     if transform is None or transform == "none":
         return values
     if transform == "cos_degrees":
@@ -85,7 +86,7 @@ def _apply_transform(values: np.ndarray, transform: Optional[str]) -> np.ndarray
 
 
 def _apply_fill_value(
-    values: np.ndarray, fill_value: Optional[float], field_name: str
+    values: np.ndarray, fill_value: float | None, field_name: str
 ) -> np.ndarray:
     non_finite = ~np.isfinite(values)
     count = int(np.count_nonzero(non_finite))
@@ -144,7 +145,7 @@ def _validate_field(field_name: str, values: np.ndarray) -> None:
         )
 
 
-def _coord_name(data_array: Any, candidates: Iterable[str]) -> Optional[str]:
+def _coord_name(data_array: Any, candidates: Iterable[str]) -> str | None:
     names = set(data_array.coords) | set(data_array.dims)
     for candidate in candidates:
         if candidate in names:
@@ -191,9 +192,9 @@ def _interp_to_target(
     if lon_name in data_array.coords:
         lon_values = np.asarray(data_array[lon_name].values, dtype=np.float64)
         if lon_values.ndim == 1:
-            data_array = data_array.assign_coords(
-                {lon_name: _normalize_longitudes(lon_values)}
-            )
+            data_array = data_array.assign_coords({
+                lon_name: _normalize_longitudes(lon_values)
+            })
             data_array = data_array.sortby(lon_name)
 
     if lat_name in data_array.coords:
@@ -248,7 +249,7 @@ def _prepare_auth_environment(strategy: str) -> None:
         os.environ.pop("EARTHDATA_TOKEN", None)
 
 
-def _search_granules(earthaccess: Any, stream: dict, provider: Any) -> List[Any]:
+def _search_granules(earthaccess: Any, stream: dict, provider: Any) -> list[Any]:
     try:
         return earthaccess.search_data(
             short_name=stream["short_name"],
@@ -270,14 +271,14 @@ def _search_granules(earthaccess: Any, stream: dict, provider: Any) -> List[Any]
         raise
 
 
-def _granule_data_links(granule: Any) -> List[str]:
+def _granule_data_links(granule: Any) -> list[str]:
     data_links = getattr(granule, "data_links", None)
     if callable(data_links):
         return [str(link) for link in data_links()]
     return [str(link) for link in getattr(granule, "data_links", []) or []]
 
 
-def _first_data_link(granules: List[Any]) -> Optional[str]:
+def _first_data_link(granules: list[Any]) -> str | None:
     for granule in granules:
         for link in _granule_data_links(granule):
             lowered = link.lower()
@@ -286,14 +287,14 @@ def _first_data_link(granules: List[Any]) -> Optional[str]:
     return None
 
 
-def _is_hdf_eos_link(link: Optional[str]) -> bool:
+def _is_hdf_eos_link(link: str | None) -> bool:
     if not link:
         return False
     lowered = link.lower().split("?", 1)[0]
     return lowered.endswith(".hdf")
 
 
-def _raise_if_unsupported_granule_format(stream: dict, granules: List[Any]) -> None:
+def _raise_if_unsupported_granule_format(stream: dict, granules: list[Any]) -> None:
     first_link = _first_data_link(granules)
     if not _is_hdf_eos_link(first_link):
         return
@@ -309,8 +310,8 @@ def _raise_if_unsupported_granule_format(stream: dict, granules: List[Any]) -> N
 
 
 def _download_granules(
-    granules: List[Any], download_dir: Path, provider: Any
-) -> List[Path]:
+    granules: list[Any], download_dir: Path, provider: Any
+) -> list[Path]:
     import earthaccess
     from earthaccess.exceptions import EulaNotAccepted
 
@@ -346,7 +347,7 @@ def _download_granules(
     return [Path(path) for path in paths]
 
 
-def _open_dataset(stream: dict, download_dir: Optional[Path] = None) -> Any:
+def _open_dataset(stream: dict, download_dir: Path | None = None) -> Any:
     import earthaccess
     import xarray as xr
 
@@ -408,7 +409,7 @@ def _is_transient_remote_error(exc: BaseException) -> bool:
         "TimeoutError",
     }
     visited = set()
-    current: Optional[BaseException] = exc
+    current: BaseException | None = exc
     while current is not None and id(current) not in visited:
         visited.add(id(current))
         if getattr(current, "status", None) in transient_statuses:
@@ -421,13 +422,13 @@ def _is_transient_remote_error(exc: BaseException) -> bool:
 
 def _read_stream(
     stream: dict,
-    download_dir: Optional[Path],
+    download_dir: Path | None,
     timestamp: np.datetime64,
     timestamp_datetime: datetime,
     target_lons: np.ndarray,
     target_lats: np.ndarray,
     output_dir: Path,
-) -> List[str]:
+) -> list[str]:
     dataset = _open_dataset(stream, download_dir)
     manifest_lines = []
     try:
@@ -472,7 +473,7 @@ def _read_stream(
         dataset.close()
 
 
-def _read_stream_with_retries(*args: Any, **kwargs: Any) -> List[str]:
+def _read_stream_with_retries(*args: Any, **kwargs: Any) -> list[str]:
     attempts = max(1, int(os.getenv("CECE_EARTHACCESS_STREAM_ATTEMPTS", "4")))
     initial_delay = max(
         0.0, float(os.getenv("CECE_EARTHACCESS_RETRY_DELAY_SECONDS", "2"))
@@ -511,7 +512,7 @@ def main() -> int:
 
     config = yaml.safe_load(args.config.read_text())
     if not isinstance(config, dict):
-        raise ValueError("CECE config must be a YAML mapping")
+        raise TypeError("CECE config must be a YAML mapping")
 
     streams = _earthaccess_streams(config)
     args.output_dir.mkdir(parents=True, exist_ok=True)
