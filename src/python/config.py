@@ -15,7 +15,7 @@ cece.initialize : Initialize CECE with a configuration.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Any
+from typing import Any
 
 # Support both package (relative) and direct-module import
 try:
@@ -24,7 +24,9 @@ except ImportError:
     from earthaccess_resolver import EarthAccessStreamConfig, validate_short_names  # type: ignore[no-redef]
 
 
-def _bounding_box_from_grid(grid: dict) -> Optional[tuple]:
+def _bounding_box_from_grid(
+    grid: dict,
+) -> tuple[float, float, float, float] | None:
     """Derive an earthaccess ``(west, south, east, north)`` bounding box from a
     CECE ``driver.grid`` block, or ``None`` if the extents are not present."""
     if not grid:
@@ -155,15 +157,16 @@ class EmissionLayer:
 
     field_name: str
     operation: str = "add"
-    masks: List[str] = field(default_factory=list)
+    masks: list[str] = field(default_factory=list)
     scale: float = 1.0
     hierarchy: int = 0
     vdist: VerticalDistributionConfig = field(
         default_factory=VerticalDistributionConfig
     )
-    diurnal_cycle: Optional[str] = None
-    weekly_cycle: Optional[str] = None
-    seasonal_cycle: Optional[str] = None
+    diurnal_cycle: str | None = None
+    weekly_cycle: str | None = None
+    seasonal_cycle: str | None = None
+    use_local_time: bool = False
 
     def validate(self) -> None:
         """
@@ -182,6 +185,30 @@ class EmissionLayer:
         if self.scale < 0:
             raise ValueError("scale must be non-negative")
         self.vdist.validate()
+
+
+@dataclass
+class LocalTimeConfig:
+    """
+    Configuration for the local-time service.
+
+    Opt-in: when disabled (the default) no UTC-offset grid is opened and
+    temporal scaling behaves exactly as the pre-feature UTC path.
+
+    Parameters
+    ----------
+    enabled : bool, optional
+        Master switch for local-time temporal scaling. Default is ``False``.
+    grid_file : str or None, optional
+        Path to the RLE UTC-offset grid (e.g. ``data/utc_grid_720r.rle``).
+        ``None``/empty means the repository default. Default is ``None``.
+    """
+
+    enabled: bool = False
+    grid_file: str | None = None
+
+    def validate(self) -> None:
+        """Validate local-time parameters (currently a no-op placeholder)."""
 
 
 @dataclass
@@ -207,7 +234,7 @@ class PhysicsSchemeConfig:
 
     name: str
     language: str = "cpp"
-    options: Dict[str, Any] = field(default_factory=dict)
+    options: dict[str, Any] = field(default_factory=dict)
 
     def validate(self) -> None:
         """
@@ -268,8 +295,8 @@ class DataStreamConfig:
     """
 
     name: str
-    file_paths: List[str] = field(default_factory=list)
-    variables: Dict[str, str] = field(default_factory=dict)
+    file_paths: list[str] = field(default_factory=list)
+    variables: dict[str, str] = field(default_factory=dict)
     taxmode: str = "cycle"
     tintalgo: str = "nearest"
     mapalgo: str = "default"
@@ -328,9 +355,7 @@ class ValidationResult:
     ...         print(err)
     """
 
-    def __init__(
-        self, is_valid: bool = True, errors: Optional[List[str]] = None
-    ) -> None:
+    def __init__(self, is_valid: bool = True, errors: list[str] | None = None) -> None:
         """
         Initialize validation result.
 
@@ -389,7 +414,7 @@ class CeceConfig:
     Validation passed
     """
 
-    def __init__(self, config_dict: Optional[dict] = None) -> None:
+    def __init__(self, config_dict: dict | None = None) -> None:
         """
         Initialize configuration.
 
@@ -399,17 +424,18 @@ class CeceConfig:
             Dictionary with configuration data to populate from.
             Default is ``None``.
         """
-        self._species: Dict[str, List[EmissionLayer]] = {}
-        self._physics_schemes: List[PhysicsSchemeConfig] = []
-        self._cece_data: Dict[str, Any] = {"streams": []}
+        self._species: dict[str, list[EmissionLayer]] = {}
+        self._physics_schemes: list[PhysicsSchemeConfig] = []
+        self._cece_data: dict[str, Any] = {"streams": []}
         self._vertical_config: VerticalDistributionConfig = VerticalDistributionConfig()
-        self._temporal_cycles: Dict[str, List] = {}
-        self._grid: Dict[str, Any] = {}
+        self._temporal_cycles: dict[str, list] = {}
+        self._grid: dict[str, Any] = {}
+        self._local_time: LocalTimeConfig = LocalTimeConfig()
 
         if config_dict:
             self._from_dict(config_dict)
 
-    def add_species(self, name: str, layers: List[EmissionLayer]) -> None:
+    def add_species(self, name: str, layers: list[EmissionLayer]) -> None:
         """
         Add a species with its emission layers.
 
@@ -423,16 +449,17 @@ class CeceConfig:
         Raises
         ------
         ValueError
-            If ``name`` is empty, ``layers`` is not a list, or any layer
-            fails validation.
+            If ``name`` is empty or any layer fails validation.
+        TypeError
+            If ``layers`` is not a list or contains a non-EmissionLayer item.
         """
         if not name:
             raise ValueError("Species name cannot be empty")
         if not isinstance(layers, list):
-            raise ValueError("layers must be a list")
+            raise TypeError("layers must be a list")
         for layer in layers:
             if not isinstance(layer, EmissionLayer):
-                raise ValueError("All layers must be EmissionLayer objects")
+                raise TypeError("All layers must be EmissionLayer objects")
             layer.validate()
         self._species[name] = layers
 
@@ -440,7 +467,7 @@ class CeceConfig:
         self,
         name: str,
         language: str = "cpp",
-        options: Optional[Dict[str, Any]] = None,
+        options: dict[str, Any] | None = None,
     ) -> None:
         """
         Register a physics scheme.
@@ -467,8 +494,8 @@ class CeceConfig:
     def add_data_stream(
         self,
         name: str,
-        file_paths: List[str],
-        variables: Dict[str, str],
+        file_paths: list[str],
+        variables: dict[str, str],
         taxmode: str = "cycle",
         tintalgo: str = "nearest",
         mapalgo: str = "default",
@@ -518,7 +545,7 @@ class CeceConfig:
         stream.validate()
         self._cece_data["streams"].append(stream)
 
-    def add_temporal_cycle(self, name: str, factors: List) -> None:
+    def add_temporal_cycle(self, name: str, factors: list) -> None:
         """
         Add a temporal cycle (diurnal, weekly, or seasonal).
 
@@ -532,13 +559,15 @@ class CeceConfig:
         Raises
         ------
         ValueError
-            If ``name`` is empty, ``factors`` is not a list, ``factors`` is
-            empty, or any factor is negative.
+            If ``name`` is empty, ``factors`` is empty, or any factor is
+            negative.
+        TypeError
+            If ``factors`` is not a list.
         """
         if not name:
             raise ValueError("Cycle name cannot be empty")
         if not isinstance(factors, list):
-            raise ValueError("factors must be a list")
+            raise TypeError("factors must be a list")
         if not factors:
             raise ValueError("factors cannot be empty")
         for f in factors:
@@ -564,7 +593,7 @@ class CeceConfig:
         >>> if not result:
         ...     print(result)
         """
-        errors: List[str] = []
+        errors: list[str] = []
 
         # Validate species
         for name, layers in self._species.items():
@@ -574,21 +603,21 @@ class CeceConfig:
                 try:
                     layer.validate()
                 except ValueError as e:
-                    errors.append(f"Species '{name}': {str(e)}")
+                    errors.append(f"Species '{name}': {e!s}")
 
         # Validate physics schemes
         for scheme in self._physics_schemes:
             try:
                 scheme.validate()
             except ValueError as e:
-                errors.append(f"Physics scheme: {str(e)}")
+                errors.append(f"Physics scheme: {e!s}")
 
         # Validate data streams
         for stream in self._cece_data.get("streams", []):
             try:
                 stream.validate()
             except ValueError as e:
-                errors.append(f"Data stream: {str(e)}")
+                errors.append(f"Data stream: {e!s}")
 
         # Validate temporal cycles
         for name, factors in self._temporal_cycles.items():
@@ -647,6 +676,7 @@ class CeceConfig:
                         "vdist_p_end": layer.vdist.p_end,
                         "vdist_h_start": layer.vdist.h_start,
                         "vdist_h_end": layer.vdist.h_end,
+                        "use_local_time": layer.use_local_time,
                     }
                     for layer in layers
                 ]
@@ -672,6 +702,10 @@ class CeceConfig:
                 ]
             },
             "temporal_cycles": self._temporal_cycles,
+            "local_time": {
+                "enabled": self._local_time.enabled,
+                "grid_file": self._local_time.grid_file,
+            },
         }
 
     @classmethod
@@ -722,18 +756,50 @@ class CeceConfig:
         """
         try:
             import yaml
-        except ImportError:
+        except ImportError as e:
             raise ImportError(
                 "PyYAML is required for YAML parsing. Install with: pip install pyyaml"
-            )
-
+            ) from e
         try:
             config_dict = yaml.safe_load(yaml_str)
             if not isinstance(config_dict, dict):
                 raise ValueError("YAML must represent a dictionary")
             return cls.from_dict(config_dict)
         except yaml.YAMLError as e:
-            raise ValueError(f"Invalid YAML: {str(e)}")
+            raise ValueError(f"Invalid YAML: {e!s}")
+
+    def _add_stream_from_dict(self, stream_data: dict) -> None:
+        if stream_data.get("source") == "earthaccess":
+            bounding_box = stream_data.get("bounding_box")
+            if bounding_box is None:
+                bounding_box = _bounding_box_from_grid(self._grid)
+            ea_cfg = EarthAccessStreamConfig(
+                name=stream_data.get("name", ""),
+                short_name=stream_data["short_name"],
+                temporal_start=stream_data["temporal_start"],
+                temporal_end=stream_data["temporal_end"],
+                variable_map=stream_data.get("variables", {}),
+                bounding_box=bounding_box,
+                version=stream_data.get("version"),
+                cloud_hosted=stream_data.get("cloud_hosted", True),
+                daac=stream_data.get("daac"),
+                block_size=stream_data.get("block_size"),
+                cache_type=stream_data.get("cache_type"),
+                use_virtual=stream_data.get("virtual", False),
+            )
+            self._cece_data.setdefault("earthaccess_streams", []).append(ea_cfg)
+            return
+
+        self.add_data_stream(
+            name=stream_data.get("name", ""),
+            file_paths=stream_data.get("file_paths", []),
+            variables=stream_data.get("variables", {}),
+            taxmode=stream_data.get("taxmode", "cycle"),
+            time_label=stream_data.get("time_label", "auto"),
+            tintalgo=stream_data.get("tintalgo", "nearest"),
+            mapalgo=stream_data.get("mapalgo", "default"),
+            cadence=stream_data.get("cadence", "series"),
+        )
 
     def _from_dict(self, config_dict: dict) -> None:
         """
@@ -763,6 +829,7 @@ class CeceConfig:
                     operation=layer_data.get("operation", "add"),
                     scale=layer_data.get("scale", 1.0),
                     vdist=vdist,
+                    use_local_time=layer_data.get("use_local_time", False),
                 )
                 layers.append(layer)
             if layers:
@@ -779,36 +846,7 @@ class CeceConfig:
         # Data streams — earthaccess streams are stored separately, not sent to AMIO
         self._grid = dict(config_dict.get("driver", {}).get("grid", {}))
         for stream_data in config_dict.get("cece_data", {}).get("streams", []):
-            if stream_data.get("source") == "earthaccess":
-                bounding_box = stream_data.get("bounding_box")
-                if bounding_box is None:
-                    bounding_box = _bounding_box_from_grid(self._grid)
-                ea_cfg = EarthAccessStreamConfig(
-                    name=stream_data.get("name", ""),
-                    short_name=stream_data["short_name"],
-                    temporal_start=stream_data["temporal_start"],
-                    temporal_end=stream_data["temporal_end"],
-                    variable_map=stream_data.get("variables", {}),
-                    bounding_box=bounding_box,
-                    version=stream_data.get("version"),
-                    cloud_hosted=stream_data.get("cloud_hosted", True),
-                    daac=stream_data.get("daac"),
-                    block_size=stream_data.get("block_size"),
-                    cache_type=stream_data.get("cache_type"),
-                    use_virtual=stream_data.get("virtual", False),
-                )
-                self._cece_data.setdefault("earthaccess_streams", []).append(ea_cfg)
-            else:
-                self.add_data_stream(
-                    name=stream_data.get("name", ""),
-                    file_paths=stream_data.get("file_paths", []),
-                    variables=stream_data.get("variables", {}),
-                    taxmode=stream_data.get("taxmode", "cycle"),
-                    time_label=stream_data.get("time_label", "auto"),
-                    tintalgo=stream_data.get("tintalgo", "nearest"),
-                    mapalgo=stream_data.get("mapalgo", "default"),
-                    cadence=stream_data.get("cadence", "series"),
-                )
+            self._add_stream_from_dict(stream_data)
 
         # Optional opt-in: warn about unresolvable short_names before the run
         # starts, rather than at the first timestep. Off by default because it
@@ -825,18 +863,40 @@ class CeceConfig:
         for name, factors in config_dict.get("temporal_cycles", {}).items():
             self.add_temporal_cycle(name, factors)
 
+        # Local-time service
+        lt = config_dict.get("local_time", {})
+        if lt:
+            self._local_time = LocalTimeConfig(
+                enabled=lt.get("enabled", False),
+                grid_file=lt.get("grid_file", None),
+            )
+
+        # A layer that explicitly opts into local-time scaling while the
+        # feature is disabled would silently fall back to UTC scaling; reject
+        # it instead.
+        if not self._local_time.enabled:
+            for name, layers in self._species.items():
+                for layer in layers:
+                    if layer.use_local_time:
+                        raise ValueError(
+                            f"Species '{name}' layer '{layer.field_name}' sets "
+                            "use_local_time but local_time.enabled is false. "
+                            "Enable the local_time section or remove "
+                            "use_local_time from the layer."
+                        )
+
     @property
-    def species(self) -> Dict[str, List[EmissionLayer]]:
+    def species(self) -> dict[str, list[EmissionLayer]]:
         """dict : Mapping of species names to lists of ``EmissionLayer``."""
         return self._species
 
     @property
-    def physics_schemes(self) -> List[PhysicsSchemeConfig]:
+    def physics_schemes(self) -> list[PhysicsSchemeConfig]:
         """list of PhysicsSchemeConfig : Registered physics schemes."""
         return self._physics_schemes
 
     @property
-    def cece_data(self) -> Dict[str, Any]:
+    def cece_data(self) -> dict[str, Any]:
         """dict : Data stream configuration."""
         return self._cece_data
 
@@ -846,17 +906,22 @@ class CeceConfig:
         return self._vertical_config
 
     @property
-    def grid(self) -> Dict[str, Any]:
+    def grid(self) -> dict[str, Any]:
         """dict : Parsed ``driver.grid`` block (lon/lat extents), if present."""
         return self._grid
 
     @property
-    def earthaccess_streams(self) -> List[EarthAccessStreamConfig]:
+    def earthaccess_streams(self) -> list[EarthAccessStreamConfig]:
         """list of EarthAccessStreamConfig : Cloud-streamed NASA Earthdata sources."""
         return self._cece_data.get("earthaccess_streams", [])
 
+    @property
+    def local_time(self) -> LocalTimeConfig:
+        """LocalTimeConfig : Local-time service settings."""
+        return self._local_time
 
-def parse_earthaccess_streams(cece_cfg: dict) -> List[EarthAccessStreamConfig]:
+
+def parse_earthaccess_streams(cece_cfg: dict) -> list[EarthAccessStreamConfig]:
     """Extract ``source: earthaccess`` stream entries from a raw config dict.
 
     Suitable for use before a full ``CeceConfig`` parse, e.g. to pre-open
@@ -875,7 +940,7 @@ def parse_earthaccess_streams(cece_cfg: dict) -> List[EarthAccessStreamConfig]:
         One entry per stream that declares ``source: earthaccess``.
     """
     grid = cece_cfg.get("driver", {}).get("grid", {})
-    results: List[EarthAccessStreamConfig] = []
+    results: list[EarthAccessStreamConfig] = []
     for stream in cece_cfg.get("cece_data", {}).get("streams", []):
         if stream.get("source") != "earthaccess":
             continue
