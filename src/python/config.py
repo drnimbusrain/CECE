@@ -896,6 +896,7 @@ class DriverConfig:
     timestep_seconds: int = 3600
     log_file: str | None = None
     gridspec_file: str | None = None
+    earthaccess_helper: str | None = None
     grid: GridConfig = field(default_factory=GridConfig)
     stacking_refresh_interval_seconds: int = 0
     amio_worker_threads: int = 1
@@ -927,6 +928,8 @@ class DriverConfig:
             _validate_string(self.log_file, "driver.log_file")
         if self.gridspec_file is not None:
             _validate_string(self.gridspec_file, "driver.gridspec_file")
+        if self.earthaccess_helper is not None:
+            _validate_string(self.earthaccess_helper, "driver.earthaccess_helper")
         self.grid.validate()
         _validate_integer(
             self.stacking_refresh_interval_seconds,
@@ -965,6 +968,7 @@ class DriverConfig:
                 "timestep_seconds",
                 "log_file",
                 "gridspec_file",
+                "earthaccess_helper",
                 "grid",
                 "stacking_refresh_interval_seconds",
                 "amio_worker_threads",
@@ -1018,6 +1022,9 @@ class OutputConfig:
     frequency_steps: int = 1
     fields: list[OutputFieldConfig] = field(default_factory=list)
     amio_worker_threads: int | None = None
+    amio_staging_buffer_count: int = 2
+    amio_staging_buffer_capacity_bytes: int = 67108864
+    amio_staging_timeout_ms: int = 60000
     global_attributes: dict[str, str | int | float | bool] = field(default_factory=dict)
 
     def validate(self) -> None:
@@ -1039,6 +1046,24 @@ class OutputConfig:
             _validate_integer(self.amio_worker_threads, "output.amio_worker_threads")
             if self.amio_worker_threads < 1:
                 raise ValueError("output.amio_worker_threads must be >= 1")
+        _validate_integer(
+            self.amio_staging_buffer_count, "output.amio_staging_buffer_count"
+        )
+        if not 1 <= self.amio_staging_buffer_count <= 4096:
+            raise ValueError("output.amio_staging_buffer_count must be in [1, 4096]")
+        _validate_integer(
+            self.amio_staging_buffer_capacity_bytes,
+            "output.amio_staging_buffer_capacity_bytes",
+        )
+        if not 1 <= self.amio_staging_buffer_capacity_bytes <= 1073741824:
+            raise ValueError(
+                "output.amio_staging_buffer_capacity_bytes must be in [1, 1073741824]"
+            )
+        _validate_integer(
+            self.amio_staging_timeout_ms, "output.amio_staging_timeout_ms"
+        )
+        if not 1 <= self.amio_staging_timeout_ms <= 60000:
+            raise ValueError("output.amio_staging_timeout_ms must be in [1, 60000]")
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any], where: str = "output") -> OutputConfig:
@@ -1052,6 +1077,9 @@ class OutputConfig:
                 "frequency_steps",
                 "fields",
                 "amio_worker_threads",
+                "amio_staging_buffer_count",
+                "amio_staging_buffer_capacity_bytes",
+                "amio_staging_timeout_ms",
                 "global_attributes",
             },
             where,
@@ -1071,6 +1099,11 @@ class OutputConfig:
                 for index, item in enumerate(raw_fields)
             ],
             amio_worker_threads=values.get("amio_worker_threads"),
+            amio_staging_buffer_count=values.get("amio_staging_buffer_count", 2),
+            amio_staging_buffer_capacity_bytes=values.get(
+                "amio_staging_buffer_capacity_bytes", 67108864
+            ),
+            amio_staging_timeout_ms=values.get("amio_staging_timeout_ms", 60000),
             global_attributes=_validate_global_attributes(
                 values.get("global_attributes", {}), f"{where}.global_attributes"
             ),
@@ -1721,6 +1754,13 @@ class CeceConfig:
                 result["output"]["global_attributes"] = output.global_attributes
             if output.amio_worker_threads is not None:
                 result["output"]["amio_worker_threads"] = output.amio_worker_threads
+            result["output"]["amio_staging_buffer_count"] = (
+                output.amio_staging_buffer_count
+            )
+            result["output"]["amio_staging_buffer_capacity_bytes"] = (
+                output.amio_staging_buffer_capacity_bytes
+            )
+            result["output"]["amio_staging_timeout_ms"] = output.amio_staging_timeout_ms
         if self._driver_config is not None:
             driver = self._driver_config
             result["driver"] = {
@@ -1729,6 +1769,7 @@ class CeceConfig:
                 "timestep_seconds": driver.timestep_seconds,
                 "log_file": driver.log_file,
                 "gridspec_file": driver.gridspec_file,
+                "earthaccess_helper": driver.earthaccess_helper,
                 "grid": {
                     "grid_name": driver.grid.grid_name,
                     "nx": driver.grid.nx,

@@ -174,7 +174,7 @@ The native standalone driver also uses the cloud extras when a config contains `
 
 ```yaml
 driver:
-	earthaccess_helper: "../scripts/cece_earthaccess_standalone_ingest.py"
+  earthaccess_helper: "../scripts/cece_earthaccess_standalone_ingest.py"
 ```
 
 Relative helper paths are resolved from the YAML configuration file's directory. An absolute path is also accepted. `CECE_EARTHACCESS_HELPER` takes precedence over the YAML setting, which is useful for deployment overrides. If neither is set, the driver searches the current directory and parent directories for `scripts/cece_earthaccess_standalone_ingest.py`. Set `CECE_PYTHON` if the `earthaccess` environment is not the default `python3`:
@@ -187,6 +187,7 @@ export CECE_EARTHACCESS_HELPER=/path/to/CECE/scripts/cece_earthaccess_standalone
 
 Earthaccess variable mappings can also apply simple transforms before fields are injected into CECE. For example, MEGAN3 expects `solar_cosine` in the range `[0, 1]`, while some NASA products expose solar zenith angle in degrees. Use `transform: cos_degrees` to convert degrees to daylight cosine during injection:
 
+<!-- cece-validate: skip -->
 ```yaml
 variables:
   solar_zenith_angle:
@@ -198,23 +199,25 @@ Use `transform: cos_radians` for radian inputs. If `solar_cosine` is mapped with
 
 The staged MEGAN3 example obtains direct and diffuse PAR from the MERRA-2 land-surface-forcing collection `M2T1NXLFO`, using its `PARDR` and `PARDF` fields. Because that collection does not include solar zenith angle, the helper derives daylight-clipped `solar_cosine` from the UTC model time and target-grid coordinates:
 
+<!-- cece-validate: skip -->
 ```yaml
 variables:
-	PARDR: par_direct
-	PARDF: par_diffuse
+  PARDR: par_direct
+  PARDF: par_diffuse
 derived_variables:
-	solar_cosine: solar_cosine
+  solar_cosine: solar_cosine
 ```
 
 The older `M2T1NXRAD` collection contains broadband fields such as `SWGDN`, but it does not contain `PARDR`, `PARDF`, or `SZA` in the downloaded Version 5.12.4 files.
 
 Land-only products can contain NaN/fill cells over oceans or outside the modeled surface type. Configure replacements explicitly per variable instead of globally weakening validation:
 
+<!-- cece-validate: skip -->
 ```yaml
 variables:
-	LAI:
-		model: leaf_area_index
-		fill_value: 0.0
+  LAI:
+    model: leaf_area_index
+    fill_value: 0.0
 ```
 
 The helper replaces only non-finite values for mappings that define `fill_value`; all other fields still fail validation when they contain NaN or infinity. The examples use zero for missing LAI and soil moisture, representing no vegetation or available soil water, and `273.15 K` for missing layer-1 soil temperature where zero-moisture/zero-LAI fields suppress land emissions.
@@ -297,10 +300,10 @@ For a global 0.1-degree output grid (`3600x1800`), one surface `float64` field i
 
 ```yaml
 output:
-	amio_worker_threads: 2
-	amio_staging_buffer_count: 2
-	amio_staging_buffer_capacity_bytes: 67108864 # 64 MiB
-	amio_staging_timeout_ms: 60000
+  amio_worker_threads: 2
+  amio_staging_buffer_count: 2
+  amio_staging_buffer_capacity_bytes: 67108864 # 64 MiB
+  amio_staging_timeout_ms: 60000
 ```
 
 The writer automatically raises buffer capacity when a field is larger than the configured minimum, up to AMIO's 1 GiB per-buffer limit. It waits for every asynchronous coordinate and field write before reusing staging capacity. Increasing `driver.amio_staging_buffer_count` affects input streams and does not tune output buffers.
