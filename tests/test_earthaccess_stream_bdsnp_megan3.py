@@ -15,6 +15,7 @@ import sys
 import warnings
 from datetime import datetime, timedelta
 from pathlib import Path
+from types import ModuleType
 from typing import ClassVar
 from unittest.mock import MagicMock, patch
 
@@ -119,6 +120,22 @@ requires_h5netcdf = pytest.mark.skipif(
     not (_XARRAY_AVAILABLE and _H5NETCDF_AVAILABLE),
     reason="xarray+h5netcdf not installed — run: pip install 'cece-tools[cloud]'",
 )
+
+
+class _FakeEulaNotAccepted(Exception):
+    pass
+
+
+class _FakeEarthAccessExceptions(ModuleType):
+    EulaNotAccepted = _FakeEulaNotAccepted
+
+
+def _mock_earthaccess_exceptions(mock_earthaccess: MagicMock) -> ModuleType:
+    mock_earthaccess.__path__ = []
+    exceptions = _FakeEarthAccessExceptions("earthaccess.exceptions")
+    mock_earthaccess.exceptions = exceptions
+    return exceptions
+
 
 requires_xarray = pytest.mark.skipif(
     not _XARRAY_AVAILABLE,
@@ -821,8 +838,16 @@ class TestStandaloneEarthAccessIngestHelper:
 
         mock_xr = MagicMock()
         mock_xr.open_mfdataset.return_value = MagicMock()
+        fake_exceptions = _mock_earthaccess_exceptions(mock_ea)
 
-        with patch.dict(sys.modules, {"earthaccess": mock_ea, "xarray": mock_xr}):
+        with patch.dict(
+            sys.modules,
+            {
+                "earthaccess": mock_ea,
+                "earthaccess.exceptions": fake_exceptions,
+                "xarray": mock_xr,
+            },
+        ):
             result = _standalone_ingest_mod._open_dataset(
                 {
                     "name": "merra2_lai",
@@ -900,15 +925,20 @@ class TestStandaloneEarthAccessIngestHelper:
         dataset.close.assert_called_once_with()
 
     def test_helper_reports_eula_authorization_failure(self, tmp_path):
-        from earthaccess.exceptions import EulaNotAccepted
-
         mock_ea = MagicMock()
-        mock_ea.download.side_effect = EulaNotAccepted(
+        fake_exceptions = _mock_earthaccess_exceptions(mock_ea)
+        mock_ea.download.side_effect = fake_exceptions.EulaNotAccepted(
             "Eula Acceptance Failure for https://example.test/file.nc4"
         )
 
         with (
-            patch.dict(sys.modules, {"earthaccess": mock_ea}),
+            patch.dict(
+                sys.modules,
+                {
+                    "earthaccess": mock_ea,
+                    "earthaccess.exceptions": fake_exceptions,
+                },
+            ),
             pytest.raises(RuntimeError, match=r"urs\.earthdata\.nasa\.gov/profile"),
         ):
             _standalone_ingest_mod._download_granules(
