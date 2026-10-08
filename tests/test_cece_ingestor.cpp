@@ -131,29 +131,12 @@ TEST_F(IngestorTest, CeceIoSkipsEarthAccessAndMapsImplicitStreams) {
                << "      file: local.nc\n"
                << "      variables:\n"
                << "        - file: LOCAL_FILE\n"
-               << "          model: local_model\n";
-        << "    - name: missing_variables\n"
-        << "    - name: null_variables\n"
-        << "      variables:\n"
-        << "    - name: empty_variables\n"
-        << "      variables: []\n";
-        << "    - name: modis_lai\n"
-        << "      source: earthaccess\n"
-        << "      short_name: MCD15A2H\n"
-        << "      temporal_start: '2022-07-01'\n"
-        << "      temporal_end: '2022-07-03'\n"
-        << "      variables:\n"
-        << "        Lai_500m: leaf_area_index\n"
-        << "    - name: local_stream\n"
-        << "      file: local.nc\n"
-        << "      variables:\n"
-        << "        - file: LOCAL_FILE\n"
-        << "          model: local_model\n"
-        << "    - name: missing_variables\n"
-        << "    - name: null_variables\n"
-        << "      variables:\n"
-        << "    - name: empty_variables\n"
-        << "      variables: []\n";
+               << "          model: local_model\n"
+               << "    - name: missing_variables\n"
+               << "    - name: null_variables\n"
+               << "      variables:\n"
+               << "    - name: empty_variables\n"
+               << "      variables: []\n";
     }
 
     cece::io::CeceIO io;
