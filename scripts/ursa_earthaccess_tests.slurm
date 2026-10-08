@@ -1,4 +1,6 @@
 #!/bin/bash
+# Manual Ursa-site integration driver; it requires site modules and optional EDL
+# credentials, so portable coverage remains in the regular pytest suite.
 #SBATCH --job-name=cece-earthaccess-tests
 #SBATCH --account=<your-account>
 #SBATCH --partition=<your-partition>

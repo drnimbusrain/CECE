@@ -1,80 +1,11 @@
-"""
-Integration tests for earthaccess cloud-native NASA Earthdata streaming into
-CECE BDSNP (soil NO) and MEGAN3 (biogenic isoprene) physics on a global
-4°×5° grid (72 lon × 46 lat), matching the HEMCO parity grids from PRs #85
-and #90.
+"""Tests for EarthAccess configuration, mocked streaming, and field injection.
 
-Test classes
-------------
-TestEarthAccessStreamConfig
-    Unit tests for EarthAccessStreamConfig dataclass construction and defaults.
+Most tests use mocks or local NetCDF fixtures and require no Earthdata
+credentials. The ``live_earthdata`` marker opts into a real EDL smoke test.
 
-TestParseEarthAccessStreams
-    Unit tests for parse_earthaccess_streams() config-dict helper.
-
-TestCeceConfigEarthAccessRouting
-    Verifies that CeceConfig._from_dict routes source:earthaccess streams to
-    earthaccess_streams and leaves AMIO streams on their original path.
-
-TestEarthAccessStreamResolverMocked
-    Tests EarthAccessStreamResolver.open_as_xarray() with earthaccess fully
-    mocked — no EDL credentials required, runs in CI.
-
-TestEarthAccessStreamBridgeMocked
-    Tests EarthAccessStreamBridge.inject_at_time() end-to-end using a mocked
-    xr.Dataset and a real _cece_core.CeceImportState if the pybind11 module
-    is available, or a lightweight stub if not.
-
-TestBDSNPFieldInjectionOnHemcoGrid
-    Constructs synthetic SMAP-like soil temperature and moisture on the exact
-    HEMCO 4°×5° 72×46 grid and asserts that inject_at_time delivers finite,
-    physically plausible arrays in the import state.  Mirrors the scope of PR
-    #85 (HEMCO 3.12.1 SoilNOx parity on the 4°×5° reference grid).
-
-TestMEGAN3FieldInjectionOnHemcoGrid
-    Constructs synthetic MODIS LAI, SMAP soil moisture, and CERES PAR on the
-    same 72×46 grid and asserts that inject_at_time delivers all six MEGAN3
-    import fields.  Mirrors the scope of PR #90 (HEMCO 3.12.1 MEGAN isoprene
-    parity on the 4°×5° reference grid).
-
-TestEarthAccessImportError
-    Verifies that a helpful ImportError is raised when the cloud extras are
-    absent, rather than a bare AttributeError at import time.
-
-TestLiveEarthDataIntegration  (mark: live_earthdata)
-    Skipped in CI — requires real EDL credentials stored in env vars or
-    ~/.netrc.  Performs a small real CMR search and fsspec open against the
-    SMAP SPL4SMGP collection as a smoke test.
-
-TestShortNameValidation
-    Config-parse-time CMR ``short_name`` validation (PR #92 follow-up):
-    warns instead of raising, and never blocks config parsing.
-
-TestGridDerivedBoundingBox
-    Auto-derives ``bounding_box`` from ``driver.grid`` extents when a stream
-    does not set one explicitly (PR #92 follow-up).
-
-TestVirtualizeEvaluation
-    Exercises the opt-in ``use_virtual`` / ``open_virtual_mfdataset`` path and
-    its fallback to ``open_mfdataset`` (PR #92 follow-up).
-
-TestFsspecTuningKnobs
-    ``block_size`` / ``cache_type`` forwarded to ``earthaccess.open`` (PR #92
-    follow-up), with graceful fallback on older earthaccess versions.
-
-TestEarthAccessOpenWithLocalFixtureFiles
-    Mocks only ``earthaccess.login`` / ``search_data`` / ``open`` and lets the
-    real ``xr.open_mfdataset(engine="h5netcdf")`` path read genuine local
-    NetCDF4 fixture files, so CI can exercise the real file-reading code
-    without live EDL credentials (PR #92 follow-up).
-
-Running
--------
-# Fast (no credentials): all tests except live_earthdata
-pytest tests/test_earthaccess_stream_bdsnp_megan3.py -v
-
-# Include live credential test (requires EARTHDATA_USERNAME / EARTHDATA_TOKEN)
-pytest tests/test_earthaccess_stream_bdsnp_megan3.py -v -m live_earthdata
+Run the fast suite with ``pytest tests/test_earthaccess_stream_bdsnp_megan3.py``;
+run the live test with ``pytest tests/test_earthaccess_stream_bdsnp_megan3.py
+-m live_earthdata``.
 """
 
 from __future__ import annotations

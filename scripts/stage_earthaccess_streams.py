@@ -10,6 +10,7 @@ set in the compute job.
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import shutil
 import subprocess
@@ -22,6 +23,8 @@ from typing import Any
 
 import numpy as np
 import yaml
+
+LOGGER = logging.getLogger(__name__)
 
 _DAAC_ALIASES = {
     "LPDAAC_ECS": "LPCLOUD",
@@ -152,6 +155,8 @@ def _prepare_auth_environment(strategy: str) -> None:
 def _search_granules(
     earthaccess: Any, stream: dict[str, Any], provider: Any
 ) -> list[Any]:
+    # Keep data-reader imports lazy: a CMR-only preflight does not download or
+    # open a local NetCDF file and should not require these cloud extras.
     try:
         return earthaccess.search_data(
             short_name=stream["short_name"],
@@ -290,7 +295,7 @@ def _preflight_streams(
                     "https://urs.earthdata.nasa.gov/profile under Authorized Apps. "
                     f"protected_url={protected_url!r}, provider={provider!r}, error={exc}"
                 ) from exc
-        print(
+        LOGGER.info(
             f"preflight ok: {stream.get('name', '<unnamed>')} "
             f"({len(granules)} sample granule, download_access={check_download_access})"
         )
@@ -354,6 +359,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     args = _build_parser().parse_args()
 
     repo_root = Path(__file__).resolve().parents[1]
@@ -428,8 +434,8 @@ def main() -> int:
         staged_steps.append(step_index)
 
     _copy_stage_metadata(stage_dir, config_path, len(staged_steps))
-    print(f"Staged {len(staged_steps)} EarthAccess step(s) in {stage_dir}")
-    print(f"Compute jobs should export CECE_EARTHACCESS_STAGE_DIR={stage_dir}")
+    LOGGER.info("Staged %d EarthAccess step(s) in %s", len(staged_steps), stage_dir)
+    LOGGER.info("Compute jobs should export CECE_EARTHACCESS_STAGE_DIR=%s", stage_dir)
     return 0
 
 

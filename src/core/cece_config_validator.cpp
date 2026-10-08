@@ -10,6 +10,17 @@
 
 #include "cece/cece_logger.hpp"
 
+namespace {
+
+constexpr int kMinOutputStagingBufferCount = 1;
+constexpr int kMaxOutputStagingBufferCount = 4096;
+constexpr int kMinOutputStagingBufferCapacityBytes = 1;
+constexpr int kMaxOutputStagingBufferCapacityBytes = 1073741824;
+constexpr int kMinOutputStagingTimeoutMs = 1;
+constexpr int kMaxOutputStagingTimeoutMs = 60000;
+
+}  // namespace
+
 namespace cece {
 
 ValidationResult ConfigValidator::ValidateConfig(const conf::Value& config) {
@@ -223,7 +234,7 @@ void ConfigValidator::ValidateOutput(const conf::Value& config, ValidationResult
 
     if (output["amio_staging_buffer_count"]) {
         int count = output["amio_staging_buffer_count"].as_int();
-        if (count < 1 || count > 4096) {
+        if (count < kMinOutputStagingBufferCount || count > kMaxOutputStagingBufferCount) {
             result.errors.push_back({"output.amio_staging_buffer_count", "Output staging buffer count must be in [1, 4096]",
                                      "Set amio_staging_buffer_count between 1 and 4096"});
         }
@@ -231,7 +242,7 @@ void ConfigValidator::ValidateOutput(const conf::Value& config, ValidationResult
 
     if (output["amio_staging_buffer_capacity_bytes"]) {
         int capacity = output["amio_staging_buffer_capacity_bytes"].as_int();
-        if (capacity < 1 || capacity > 1073741824) {
+        if (capacity < kMinOutputStagingBufferCapacityBytes || capacity > kMaxOutputStagingBufferCapacityBytes) {
             result.errors.push_back({"output.amio_staging_buffer_capacity_bytes", "Output staging buffer capacity must be in [1, 1073741824]",
                                      "Set capacity to at least the largest output field and no more than 1 GiB"});
         }
@@ -239,7 +250,7 @@ void ConfigValidator::ValidateOutput(const conf::Value& config, ValidationResult
 
     if (output["amio_staging_timeout_ms"]) {
         int timeout = output["amio_staging_timeout_ms"].as_int();
-        if (timeout < 1 || timeout > 60000) {
+        if (timeout < kMinOutputStagingTimeoutMs || timeout > kMaxOutputStagingTimeoutMs) {
             result.errors.push_back({"output.amio_staging_timeout_ms", "Output staging timeout must be in [1, 60000] milliseconds",
                                      "Set amio_staging_timeout_ms between 1 and 60000"});
         }
