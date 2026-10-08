@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from ._cece_core import CeceImportState  # type: ignore[import]
 
 
-def _variable_target_and_transform(mapping: Any) -> Tuple[str, Optional[str]]:
+def _variable_target_and_transform(mapping: Any) -> tuple[str, str | None]:
     if isinstance(mapping, str):
         return mapping, None
     if isinstance(mapping, dict):
@@ -29,7 +29,7 @@ def _variable_target_and_transform(mapping: Any) -> Tuple[str, Optional[str]]:
     raise TypeError("earthaccess variable mapping must be a string or mapping dict")
 
 
-def _apply_transform(values: np.ndarray, transform: Optional[str]) -> np.ndarray:
+def _apply_transform(values: np.ndarray, transform: str | None) -> np.ndarray:
     if transform is None or transform == "none":
         return values
     if transform == "cos_degrees":
@@ -68,14 +68,14 @@ class EarthAccessStreamBridge:
 
     def __init__(
         self,
-        configs: List[EarthAccessStreamConfig],
+        configs: list[EarthAccessStreamConfig],
         auth_strategy: str = "all",
     ) -> None:
         resolver = EarthAccessStreamResolver(auth_strategy=auth_strategy)
         self._datasets = [resolver.open_as_xarray(c) for c in configs]
         self._configs = configs
 
-    def inject_at_time(self, import_state: "CeceImportState", t: datetime) -> None:
+    def inject_at_time(self, import_state: CeceImportState, t: datetime) -> None:
         """Slice remote datasets at time *t* and push arrays into import state.
 
         Each field is cast to float64 and, when 2-D, shaped to ``(ny, nx)``

@@ -20,11 +20,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> None:
-    args = parse_args()
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-
-    nx, ny, nt = 30, 25, 25
+def _build_fields(nx: int, ny: int, nt: int):
     lon = np.linspace(115.05, 117.95, nx)
     lat = np.linspace(39.05, 41.45, ny)
     hours = np.arange(nt, dtype=np.float64)
@@ -55,7 +51,34 @@ def main() -> None:
     def repeat(field: np.ndarray) -> np.ndarray:
         return np.broadcast_to(field, (nt, ny, nx))
 
-    with netCDF4.Dataset(args.output, "w", format="NETCDF4_CLASSIC") as dataset:
+    fields = {
+        "artemisia_pannual": repeat(artemisia_pannual),
+        "chenopod_pannual": repeat(chenopod_pannual),
+        "total_pannual": repeat(total_pannual),
+        "c3_fraction": repeat(c3_fraction),
+        "grass_fraction": repeat(grass_fraction),
+        "artemisia_sdoy": repeat(np.full((ny, nx), 222.0)),
+        "artemisia_edoy": repeat(np.full((ny, nx), 268.0)),
+        "chenopod_sdoy": repeat(np.full((ny, nx), 220.0)),
+        "chenopod_edoy": repeat(np.full((ny, nx), 270.0)),
+        "total_sdoy": repeat(np.full((ny, nx), 215.0)),
+        "total_edoy": repeat(np.full((ny, nx), 280.0)),
+        "day_of_year": day_of_year,
+        "temperature_2m": temperature,
+        "wind_speed_10m": wind_speed,
+        "convective_velocity": convective_velocity,
+        "precipitation_interval": precipitation,
+        "relative_humidity_2m": relative_humidity,
+        "sunshine_hours": sunshine_hours,
+    }
+    return lon, lat, hours, fields
+
+
+def _write_dataset(path: Path, lon, lat, hours, fields) -> None:
+    nt = len(hours)
+    ny = len(lat)
+    nx = len(lon)
+    with netCDF4.Dataset(path, "w", format="NETCDF4_CLASSIC") as dataset:
         dataset.title = "Synthetic phenology and RF pollen example input"
         dataset.source = "CECE demonstration generator; not trained RF production data"
         dataset.Conventions = "CF-1.8"
@@ -88,81 +111,48 @@ def main() -> None:
             variable.coordinates = "lat lon"
             variable[:] = values
 
-        write(
-            "artemisia_pannual",
-            repeat(artemisia_pannual),
-            "grains m-2 yr-1",
-            "synthetic annual Artemisia pollen production",
-        )
-        write(
-            "chenopod_pannual",
-            repeat(chenopod_pannual),
-            "grains m-2 yr-1",
-            "synthetic annual chenopod pollen production",
-        )
-        write(
-            "total_pannual",
-            repeat(total_pannual),
-            "grains m-2 yr-1",
-            "synthetic annual total pollen production",
-        )
-        write(
-            "c3_fraction", repeat(c3_fraction), "1", "C3 plant functional type fraction"
-        )
-        write("grass_fraction", repeat(grass_fraction), "1", "C3 and C4 grass fraction")
-        write(
-            "artemisia_sdoy",
-            repeat(np.full((ny, nx), 222.0)),
-            "day_of_year",
-            "Artemisia season start",
-        )
-        write(
-            "artemisia_edoy",
-            repeat(np.full((ny, nx), 268.0)),
-            "day_of_year",
-            "Artemisia season end",
-        )
-        write(
-            "chenopod_sdoy",
-            repeat(np.full((ny, nx), 220.0)),
-            "day_of_year",
-            "chenopod season start",
-        )
-        write(
-            "chenopod_edoy",
-            repeat(np.full((ny, nx), 270.0)),
-            "day_of_year",
-            "chenopod season end",
-        )
-        write(
-            "total_sdoy",
-            repeat(np.full((ny, nx), 215.0)),
-            "day_of_year",
-            "total pollen season start",
-        )
-        write(
-            "total_edoy",
-            repeat(np.full((ny, nx), 280.0)),
-            "day_of_year",
-            "total pollen season end",
-        )
-        write("day_of_year", day_of_year, "day_of_year", "fractional day of year")
-        write("temperature_2m", temperature, "K", "2 m air temperature")
-        write("wind_speed_10m", wind_speed, "m s-1", "10 m wind speed")
-        write(
-            "convective_velocity",
-            convective_velocity,
-            "m s-1",
-            "convective velocity scale",
-        )
-        write(
-            "precipitation_interval",
-            precipitation,
-            "mm",
-            "precipitation accumulated over the one-hour interval",
-        )
-        write("relative_humidity_2m", relative_humidity, "%", "2 m relative humidity")
-        write("sunshine_hours", sunshine_hours, "h", "daily sunshine duration")
+        metadata = {
+            "artemisia_pannual": (
+                "grains m-2 yr-1",
+                "synthetic annual Artemisia pollen production",
+            ),
+            "chenopod_pannual": (
+                "grains m-2 yr-1",
+                "synthetic annual chenopod pollen production",
+            ),
+            "total_pannual": (
+                "grains m-2 yr-1",
+                "synthetic annual total pollen production",
+            ),
+            "c3_fraction": ("1", "C3 plant functional type fraction"),
+            "grass_fraction": ("1", "C3 and C4 grass fraction"),
+            "artemisia_sdoy": ("day_of_year", "Artemisia season start"),
+            "artemisia_edoy": ("day_of_year", "Artemisia season end"),
+            "chenopod_sdoy": ("day_of_year", "chenopod season start"),
+            "chenopod_edoy": ("day_of_year", "chenopod season end"),
+            "total_sdoy": ("day_of_year", "total pollen season start"),
+            "total_edoy": ("day_of_year", "total pollen season end"),
+            "day_of_year": ("day_of_year", "fractional day of year"),
+            "temperature_2m": ("K", "2 m air temperature"),
+            "wind_speed_10m": ("m s-1", "10 m wind speed"),
+            "convective_velocity": ("m s-1", "convective velocity scale"),
+            "precipitation_interval": (
+                "mm",
+                "precipitation accumulated over the one-hour interval",
+            ),
+            "relative_humidity_2m": ("%", "2 m relative humidity"),
+            "sunshine_hours": ("h", "daily sunshine duration"),
+        }
+        for name, values in fields.items():
+            units, long_name = metadata[name]
+            write(name, values, units, long_name)
+
+
+def main() -> None:
+    args = parse_args()
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    lon, lat, hours, fields = _build_fields(nx=30, ny=25, nt=25)
+    _write_dataset(args.output, lon, lat, hours, fields)
 
     print(args.output)
 

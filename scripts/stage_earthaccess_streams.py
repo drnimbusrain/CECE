@@ -15,13 +15,13 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections.abc import Iterable, Iterator
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 import yaml
-
 
 _DAAC_ALIASES = {
     "LPDAAC_ECS": "LPCLOUD",
@@ -34,7 +34,7 @@ def _parse_datetime(value: str) -> datetime:
 
 def _iter_step_times(
     start_time: datetime, end_time: datetime, timestep_seconds: int
-) -> Iterator[Tuple[int, datetime]]:
+) -> Iterator[tuple[int, datetime]]:
     if timestep_seconds <= 0:
         raise ValueError("driver.timestep_seconds must be positive")
     step_time = start_time
@@ -46,15 +46,15 @@ def _iter_step_times(
         step_time += delta
 
 
-def _require_mapping(config: Any) -> Dict[str, Any]:
+def _require_mapping(config: Any) -> dict[str, Any]:
     if not isinstance(config, dict):
-        raise ValueError("CECE config must be a YAML mapping")
+        raise TypeError("CECE config must be a YAML mapping")
     return config
 
 
 def _bounding_box_from_grid(
-    grid: Dict[str, Any],
-) -> Optional[Tuple[float, float, float, float]]:
+    grid: dict[str, Any],
+) -> tuple[float, float, float, float] | None:
     required = ("lon_min", "lon_max", "lat_min", "lat_max")
     if not all(key in grid for key in required):
         return None
@@ -66,11 +66,11 @@ def _bounding_box_from_grid(
     )
 
 
-def _grid_coordinates(config: Dict[str, Any]) -> Tuple[np.ndarray, np.ndarray]:
+def _grid_coordinates(config: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
     driver = config.get("driver") or {}
     grid = driver.get("grid") or {}
     if not isinstance(grid, dict):
-        raise ValueError("driver.grid must be a YAML mapping")
+        raise TypeError("driver.grid must be a YAML mapping")
 
     grid_name = str(grid.get("grid_name") or "")
     if grid_name == "HEMCO_4x5":
@@ -109,7 +109,7 @@ def _write_vector(path: Path, values: Iterable[float]) -> None:
     path.write_text("".join(f"{value:.17g}\n" for value in values))
 
 
-def _resolve_helper(config_path: Path, config: Dict[str, Any], repo_root: Path) -> Path:
+def _resolve_helper(config_path: Path, config: dict[str, Any], repo_root: Path) -> Path:
     driver = config.get("driver") or {}
     helper_value = driver.get("earthaccess_helper")
     if helper_value:
@@ -120,11 +120,11 @@ def _resolve_helper(config_path: Path, config: Dict[str, Any], repo_root: Path) 
     return repo_root / "scripts" / "cece_earthaccess_standalone_ingest.py"
 
 
-def _load_config(path: Path) -> Dict[str, Any]:
+def _load_config(path: Path) -> dict[str, Any]:
     return _require_mapping(yaml.safe_load(path.read_text()))
 
 
-def _earthaccess_streams(config: Dict[str, Any]) -> List[Dict[str, Any]]:
+def _earthaccess_streams(config: dict[str, Any]) -> list[dict[str, Any]]:
     grid = config.get("driver", {}).get("grid", {}) or {}
     streams = []
     for stream in config.get("cece_data", {}).get("streams", []) or []:
@@ -137,7 +137,7 @@ def _earthaccess_streams(config: Dict[str, Any]) -> List[Dict[str, Any]]:
     return streams
 
 
-def _effective_provider(stream: Dict[str, Any]) -> Any:
+def _effective_provider(stream: dict[str, Any]) -> Any:
     daac = stream.get("daac")
     if stream.get("cloud_hosted", True) and daac == "LPDAAC_ECS":
         return _DAAC_ALIASES.get(daac, daac)
@@ -150,8 +150,8 @@ def _prepare_auth_environment(strategy: str) -> None:
 
 
 def _search_granules(
-    earthaccess: Any, stream: Dict[str, Any], provider: Any
-) -> List[Any]:
+    earthaccess: Any, stream: dict[str, Any], provider: Any
+) -> list[Any]:
     try:
         return earthaccess.search_data(
             short_name=stream["short_name"],
@@ -173,14 +173,14 @@ def _search_granules(
         raise
 
 
-def _granule_data_links(granule: Any) -> List[str]:
+def _granule_data_links(granule: Any) -> list[str]:
     data_links = getattr(granule, "data_links", None)
     if callable(data_links):
         return [str(link) for link in data_links()]
     return [str(link) for link in getattr(granule, "data_links", []) or []]
 
 
-def _first_data_link(granules: List[Any]) -> Optional[str]:
+def _first_data_link(granules: list[Any]) -> str | None:
     for granule in granules:
         for link in _granule_data_links(granule):
             lowered = link.lower()
@@ -189,7 +189,7 @@ def _first_data_link(granules: List[Any]) -> Optional[str]:
     return None
 
 
-def _is_hdf_eos_link(link: Optional[str]) -> bool:
+def _is_hdf_eos_link(link: str | None) -> bool:
     if not link:
         return False
     lowered = link.lower().split("?", 1)[0]
@@ -197,7 +197,7 @@ def _is_hdf_eos_link(link: Optional[str]) -> bool:
 
 
 def _raise_if_unsupported_granule_format(
-    stream: Dict[str, Any], granules: List[Any]
+    stream: dict[str, Any], granules: list[Any]
 ) -> None:
     first_link = _first_data_link(granules)
     if not _is_hdf_eos_link(first_link):
@@ -213,7 +213,7 @@ def _raise_if_unsupported_granule_format(
     )
 
 
-def _validate_downloaded_variables(stream: Dict[str, Any], paths: List[Any]) -> None:
+def _validate_downloaded_variables(stream: dict[str, Any], paths: list[Any]) -> None:
     try:
         import h5py  # noqa: F401
     except ImportError as exc:
@@ -243,7 +243,7 @@ def _validate_downloaded_variables(stream: Dict[str, Any], paths: List[Any]) -> 
 
 
 def _preflight_streams(
-    config: Dict[str, Any], auth_strategy: str, check_download_access: bool
+    config: dict[str, Any], auth_strategy: str, check_download_access: bool
 ) -> None:
     import earthaccess
     from earthaccess.exceptions import EulaNotAccepted
@@ -305,7 +305,7 @@ def _copy_stage_metadata(stage_dir: Path, config_path: Path, step_count: int) ->
     (stage_dir / "metadata.yaml").write_text(yaml.safe_dump(metadata, sort_keys=True))
 
 
-def main() -> int:
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--config",
@@ -350,7 +350,11 @@ def main() -> int:
         type=Path,
         help="Directory where raw EarthAccess granules are downloaded/cached (default: <stage-dir>/granules)",
     )
-    args = parser.parse_args()
+    return parser
+
+
+def main() -> int:
+    args = _build_parser().parse_args()
 
     repo_root = Path(__file__).resolve().parents[1]
     config_path = args.config.resolve()
@@ -372,7 +376,7 @@ def main() -> int:
         raise FileNotFoundError(f"EarthAccess helper not found: {helper_path}")
 
     stage_dir.mkdir(parents=True, exist_ok=True)
-    staged_steps: List[int] = []
+    staged_steps: list[int] = []
     for step_index, step_time in _iter_step_times(
         start_time, end_time, timestep_seconds
     ):

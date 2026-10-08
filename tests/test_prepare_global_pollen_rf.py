@@ -5,7 +5,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 
-from prepare_global_pollen_rf import (  # noqa: E402
+from prepare_global_pollen_rf import (
     nested_count,
     parse_count_specs,
     resolve_record_counts,

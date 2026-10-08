@@ -17,7 +17,6 @@ import pandas as pd
 import requests
 import xarray as xr
 
-
 SURFACE_COLLECTION = "M2T1NXSLV"
 FLUX_COLLECTION = "M2T1NXFLX"
 RADIATION_COLLECTION = "M2T1NXRAD"
@@ -272,18 +271,16 @@ def download_ambee(args: argparse.Namespace) -> None:
                 )
                 skipped_count_paths += skipped
                 for taxon, pollen_count in record_counts:
-                    rows.append(
-                        {
-                            "site_id": site.site_id,
-                            "latitude": float(site.latitude),
-                            "longitude": float(site.longitude),
-                            "timestamp": timestamp,
-                            "taxon": taxon,
-                            "pollen_count": pollen_count,
-                            "temporal_resolution": "hourly",
-                            "pollen_count_units": "particles/m3",
-                        }
-                    )
+                    rows.append({
+                        "site_id": site.site_id,
+                        "latitude": float(site.latitude),
+                        "longitude": float(site.longitude),
+                        "timestamp": timestamp,
+                        "taxon": taxon,
+                        "pollen_count": pollen_count,
+                        "temporal_resolution": "hourly",
+                        "pollen_count_units": "particles/m3",
+                    })
             chunk_start = chunk_stop
             if args.request_delay_seconds:
                 time.sleep(args.request_delay_seconds)
@@ -360,26 +357,24 @@ def aggregate_merra2(
 
     seconds = time_step_seconds(surface)
     rh = relative_humidity_percent(surface.T2M, surface.QV2M, surface.PS)
-    predictors = xr.Dataset(
-        {
-            "temperature_avg": surface.T2M.mean("time"),
-            "temperature_max": surface.T2M.max("time"),
-            "temperature_min": surface.T2M.min("time"),
-            "wind_speed": np.hypot(surface.U10M, surface.V10M).mean("time"),
-            "precipitation": (flux.PRECTOTCORR * seconds).sum("time"),
-            "relative_humidity": rh.mean("time"),
-            "sunshine_hours": (
-                (radiation.SWGDN >= sunshine_threshold).sum("time")
-                * time_step_seconds(radiation)
-                / 3600.0
-            ),
-            "pressure": surface.PS.mean("time"),
-            "altitude": constants.PHIS.squeeze(drop=True) / 9.80665,
-        }
-    ).compute()
-    predictors = predictors.rename(
-        {name: name.lower() for name in ("lat", "lon") if name in predictors.dims}
-    )
+    predictors = xr.Dataset({
+        "temperature_avg": surface.T2M.mean("time"),
+        "temperature_max": surface.T2M.max("time"),
+        "temperature_min": surface.T2M.min("time"),
+        "wind_speed": np.hypot(surface.U10M, surface.V10M).mean("time"),
+        "precipitation": (flux.PRECTOTCORR * seconds).sum("time"),
+        "relative_humidity": rh.mean("time"),
+        "sunshine_hours": (
+            (radiation.SWGDN >= sunshine_threshold).sum("time")
+            * time_step_seconds(radiation)
+            / 3600.0
+        ),
+        "pressure": surface.PS.mean("time"),
+        "altitude": constants.PHIS.squeeze(drop=True) / 9.80665,
+    }).compute()
+    predictors = predictors.rename({
+        name: name.lower() for name in ("lat", "lon") if name in predictors.dims
+    })
     predictors.attrs.update(
         title=f"MERRA-2 annual pollen RF predictors for {year}",
         source=f"NASA MERRA-2 {SURFACE_COLLECTION}, {RADIATION_COLLECTION}, and {CONSTANT_COLLECTION}",
@@ -457,19 +452,17 @@ def prepare_training(args: argparse.Namespace) -> None:
             continue
         cadence_hours = float(intervals.median())
         coverage_fraction = min(1.0, len(group) * cadence_hours / year_hours)
-        summaries.append(
-            {
-                args.site_id_column: site_id,
-                "latitude": group[args.latitude_column].mean(),
-                "longitude": group[args.longitude_column].mean(),
-                "annual_concentration_days": group[args.count_column].sum()
-                * cadence_hours
-                / 24.0,
-                "observation_count": len(group),
-                "cadence_hours": cadence_hours,
-                "coverage_fraction": coverage_fraction,
-            }
-        )
+        summaries.append({
+            args.site_id_column: site_id,
+            "latitude": group[args.latitude_column].mean(),
+            "longitude": group[args.longitude_column].mean(),
+            "annual_concentration_days": group[args.count_column].sum()
+            * cadence_hours
+            / 24.0,
+            "observation_count": len(group),
+            "cadence_hours": cadence_hours,
+            "coverage_fraction": coverage_fraction,
+        })
     annual = pd.DataFrame(summaries)
     if annual.empty:
         raise ValueError("Each pollen site needs at least two valid timestamps")

@@ -13,7 +13,6 @@ import xarray as xr
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import GridSearchCV, train_test_split
 
-
 DEFAULT_FEATURES = (
     "temperature_avg,temperature_max,temperature_min,wind_speed,precipitation,"
     "relative_humidity,sunshine_hours,altitude,pressure"

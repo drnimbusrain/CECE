@@ -94,6 +94,7 @@ $$E_i(t)=f_i P_{annual,i}\exp\left[-\frac{(t-\mu)^2}{2\delta^2}\right].$$
 
 Use this setting when `annual_pollen_production` already represents production per total grid-cell area and has already incorporated the taxon's land-cover or plant-functional-type fraction:
 
+<!-- cece-validate: skip -->
 ```yaml
 options:
   vegetation_fraction_default: 1.0
@@ -103,6 +104,7 @@ options:
 
 If `annual_pollen_production` instead represents production per unit vegetated area, map a dimensionless grid-cell vegetation fraction in `[0, 1]`:
 
+<!-- cece-validate: skip -->
 ```yaml
 options:
   input_mapping:

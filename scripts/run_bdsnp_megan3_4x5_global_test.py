@@ -245,7 +245,7 @@ def megan3_isop_activity_factor_cece(T, L, L_prev, pdr, pdf, sc, gwetroot):
 # LDF=1.0, dbtwn=1 day). Used here as the independent HEMCO-source-transcribed
 # reference for the diagnostic comparison; it is not an executed HEMCO run.
 # ============================================================================
-import struct  # noqa: E402
+import struct
 
 HEMCO_T_HISTORY = struct.unpack("f", struct.pack("f", 288.15))[0]
 HEMCO_PARDR_HISTORY = 30.0
@@ -419,11 +419,8 @@ def run_scalar_case_validation(outdir: Path):
         / "hemco_megan"
         / "hemco_3_12_1_megan_reference.csv"
     )
-    rows = []
     with open(csv_path, newline="") as fh:
-        reader = csv.DictReader(fh)
-        for row in reader:
-            rows.append(row)
+        rows = list(csv.DictReader(fh))
 
     out_rows = []
     for row in rows:
@@ -441,24 +438,30 @@ def run_scalar_case_validation(outdir: Path):
         cece_val = float(megan3_isop_activity_factor_cece(T, L, Lp, pdr, pdf, sc, gw))
         rel_err_hemco_repro = (
             abs(hemco_val - expected) / expected
-            if expected != 0.0
-            else (0.0 if hemco_val == 0.0 else float("inf"))
+            if expected > 0.0
+            else (
+                0.0
+                if math.isclose(hemco_val, 0.0, rel_tol=0.0, abs_tol=1.0e-15)
+                else float("inf")
+            )
         )
         rel_diff_cece_vs_hemco = (
             abs(cece_val - hemco_val) / expected
-            if expected != 0.0
-            else (0.0 if cece_val == 0.0 else float("inf"))
+            if expected > 0.0
+            else (
+                0.0
+                if math.isclose(cece_val, 0.0, rel_tol=0.0, abs_tol=1.0e-15)
+                else float("inf")
+            )
         )
-        out_rows.append(
-            {
-                "case_id": row["case_id"],
-                "expected_emission_per_aef": expected,
-                "hemco_oracle_reproduced": hemco_val,
-                "hemco_reproduction_rel_err": rel_err_hemco_repro,
-                "cece_native_defaults": cece_val,
-                "cece_vs_hemco_rel_diff": rel_diff_cece_vs_hemco,
-            }
-        )
+        out_rows.append({
+            "case_id": row["case_id"],
+            "expected_emission_per_aef": expected,
+            "hemco_oracle_reproduced": hemco_val,
+            "hemco_reproduction_rel_err": rel_err_hemco_repro,
+            "cece_native_defaults": cece_val,
+            "cece_vs_hemco_rel_diff": rel_diff_cece_vs_hemco,
+        })
 
     outdir.mkdir(parents=True, exist_ok=True)
     out_path = outdir / "scalar_case_validation.csv"
@@ -535,7 +538,11 @@ def make_plots(
         pct_diff = (
             100.0
             * (isop_activity_cece - isop_activity_hemco)
-            / np.where(isop_activity_hemco != 0.0, isop_activity_hemco, np.nan)
+            / np.where(
+                np.isclose(isop_activity_hemco, 0.0, rtol=0.0, atol=1.0e-15),
+                np.nan,
+                isop_activity_hemco,
+            )
         )
     fig, ax = plt.subplots(figsize=(10, 5), constrained_layout=True)
     finite_pct = pct_diff[np.isfinite(pct_diff)]
@@ -675,8 +682,10 @@ def main():
         "CECE native BDSNP + MEGAN3 global 4x5 test run",
         "================================================",
         f"Config: {args.config.relative_to(REPO_ROOT)}",
-        f"Grid: {NX} lon x {NY} lat (HEMCO_4x5, {grid_cfg['lon_min']} to {grid_cfg['lon_max']} lon, "
-        f"{grid_cfg['lat_min']} to {grid_cfg['lat_max']} lat)",
+        (
+            f"Grid: {NX} lon x {NY} lat (HEMCO_4x5, {grid_cfg['lon_min']} to {grid_cfg['lon_max']} lon, "
+            f"{grid_cfg['lat_min']} to {grid_cfg['lat_max']} lat)"
+        ),
         "Inputs: synthetic global fields standing in for the earthaccess MODIS/SMAP/CERES",
         "        streams (live NASA Earthdata Login not available in this environment).",
         "Equations: transcribed directly from the checked-in C++ (cece_megan3.cpp,",
@@ -696,29 +705,43 @@ def main():
         "  Scope: diagnostic comparison of the isoprene activity-factor term only.",
         "         This is NOT an executed-HEMCO runtime parity result (no gridded",
         "         HEMCO output exists in this repository; see PR #90 / docs/hemco_megan_parity.md).",
-        f"  16-case oracle self-check: max reproduction error {hemco_repro_err:.3e} "
-        "(this script's HEMCO-oracle function vs the literal PR #90 CSV values; see scalar_case_validation.csv)",
-        f"  16-case CECE-native-vs-HEMCO-oracle max relative diff: {max(cece_vs_hemco_scalar):.4f} "
-        f"({max(cece_vs_hemco_scalar) * 100.0:.1f}%)",
-        f"  Gridded activity-factor % diff (land cells): mean={float(np.mean(pct_diff)):.2f}%, "
-        f"max abs={float(np.max(np.abs(pct_diff))):.2f}%",
+        (
+            f"  16-case oracle self-check: max reproduction error {hemco_repro_err:.3e} "
+            "(this script's HEMCO-oracle function vs the literal PR #90 CSV values; see scalar_case_validation.csv)"
+        ),
+        (
+            f"  16-case CECE-native-vs-HEMCO-oracle max relative diff: {max(cece_vs_hemco_scalar):.4f} "
+            f"({max(cece_vs_hemco_scalar) * 100.0:.1f}%)"
+        ),
+        (
+            f"  Gridded activity-factor % diff (land cells): mean={float(np.mean(pct_diff)):.2f}%, "
+            f"max abs={float(np.max(np.abs(pct_diff))):.2f}%"
+        ),
         "",
         "  Root causes of the divergence (all confirmed by source inspection, not assumed):",
-        "    1. LDF: CECE ISOP default is 0.9996 (cece_emission_activity.cpp kDefaultLdf[0]); "
-        "HEMCO oracle uses 1.0.",
-        "    2. History/cold-start convention: CECE's Megan3Scheme::Run kernel currently hard-codes "
-        "T_AVG_15=297.0 K, PAR_AVG=400.0 W m-2, DOY=180, LAI dbtwn=30 days "
-        "(no running 5-day/12-hour history is wired in yet); the HEMCO oracle uses the HEMCO "
-        "no-restart cold-start values (T_DAVG=288.15 K, PARDR/PARDF_DAVG=30/48 W m-2, DOY=171, dbtwn=1 day).",
-        "    3. NORM_FAC: CECE uses the literal constant 1/1.0101081 "
-        "= %.10f; the HEMCO oracle uses the fully-derived 0.9899364002107353 "
-        "(difference is negligible, <0.001%%)." % NORM_FAC_CECE,
+        (
+            "    1. LDF: CECE ISOP default is 0.9996 (cece_emission_activity.cpp kDefaultLdf[0]); "
+            "HEMCO oracle uses 1.0."
+        ),
+        (
+            "    2. History/cold-start convention: CECE's Megan3Scheme::Run kernel currently hard-codes "
+            "T_AVG_15=297.0 K, PAR_AVG=400.0 W m-2, DOY=180, LAI dbtwn=30 days "
+            "(no running 5-day/12-hour history is wired in yet); the HEMCO oracle uses the HEMCO "
+            "no-restart cold-start values (T_DAVG=288.15 K, PARDR/PARDF_DAVG=30/48 W m-2, DOY=171, dbtwn=1 day)."
+        ),
+        (
+            f"    3. NORM_FAC: CECE uses the literal constant 1/1.0101081 = {NORM_FAC_CECE:.10f}; "
+            "the HEMCO oracle uses the fully-derived 0.9899364002107353 "
+            "(difference is negligible, <0.001%)."
+        ),
         "",
         "-- BDSNP HEMCO reference availability --",
-        "  No gridded or scalar HEMCO soil-NOx reference data exists in this repository "
-        "(only PR #90's MEGAN oracle is present). This run therefore reports CECE's native "
-        "BDSNP field on its own, cross-checked only for the documented freezing behaviour "
-        "(emission == 0 for soil T <= 0 C).",
+        (
+            "  No gridded or scalar HEMCO soil-NOx reference data exists in this repository "
+            "(only PR #90's MEGAN oracle is present). This run therefore reports CECE's native "
+            "BDSNP field on its own, cross-checked only for the documented freezing behaviour "
+            "(emission == 0 for soil T <= 0 C)."
+        ),
         "",
         f"Scalar case validation table: {scalar_csv_path.relative_to(REPO_ROOT)}",
     ]

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import warnings
 from dataclasses import dataclass, field
-from typing import List, Optional
 
 try:
     import earthaccess
@@ -23,7 +22,7 @@ def _require_earthaccess() -> None:
         )
 
 
-def _effective_provider(daac: Optional[str], cloud_hosted: bool) -> Optional[str]:
+def _effective_provider(daac: str | None, cloud_hosted: bool) -> str | None:
     if cloud_hosted and daac == "LPDAAC_ECS":
         return "LPCLOUD"
     return daac
@@ -73,12 +72,12 @@ class EarthAccessStreamConfig:
     temporal_start: str
     temporal_end: str
     variable_map: dict = field(default_factory=dict)
-    bounding_box: Optional[tuple] = None
-    version: Optional[str] = None
+    bounding_box: tuple | None = None
+    version: str | None = None
     cloud_hosted: bool = True
-    daac: Optional[str] = None
-    block_size: Optional[int] = None
-    cache_type: Optional[str] = None
+    daac: str | None = None
+    block_size: int | None = None
+    cache_type: str | None = None
     use_virtual: bool = False
 
 
@@ -196,7 +195,7 @@ class EarthAccessStreamResolver:
 
     def _try_open_virtual(
         self, cfg: EarthAccessStreamConfig, granules
-    ) -> Optional[xr.Dataset]:
+    ) -> xr.Dataset | None:
         """Attempt VirtualiZarr/DMR++-backed access; return None to fall back."""
         opener = getattr(earthaccess, "open_virtual_mfdataset", None)
         if opener is None:
@@ -210,7 +209,8 @@ class EarthAccessStreamResolver:
             return None
         try:
             return opener(granules, access="indirect", load=False)
-        except Exception as exc:  # collection lacks DMR++ sidecars, API mismatch, etc.
+        except Exception as exc:  # noqa: BLE001
+            # Virtual access is optional; provider/API failures must fall back to standard reads.
             warnings.warn(
                 f"earthaccess.open_virtual_mfdataset failed for stream {cfg.name!r} "
                 f"({exc.__class__.__name__}: {exc}); falling back to open_mfdataset.",
@@ -246,7 +246,8 @@ def validate_short_name(cfg: EarthAccessStreamConfig) -> bool:
         return True
     try:
         datasets = earthaccess.search_datasets(short_name=cfg.short_name, count=1)
-    except Exception as exc:  # network/auth failure, CMR outage, API change, etc.
+    except Exception as exc:  # noqa: BLE001
+        # CMR validation is advisory; network/auth failures must not block config parsing.
         warnings.warn(
             f"Could not validate short_name {cfg.short_name!r} for stream {cfg.name!r} "
             f"against CMR ({exc.__class__.__name__}: {exc}); continuing without validation.",
@@ -266,7 +267,7 @@ def validate_short_name(cfg: EarthAccessStreamConfig) -> bool:
     return True
 
 
-def validate_short_names(configs: List[EarthAccessStreamConfig]) -> List[str]:
+def validate_short_names(configs: list[EarthAccessStreamConfig]) -> list[str]:
     """Validate every config's short_name against CMR.
 
     Returns
