@@ -519,7 +519,11 @@ if(ESMF_FOUND)
     MPI_LAUNCHER
     PROPERTIES ENVIRONMENT "FI_PROVIDER=tcp" PROCESSORS 1
   )
-  cece_add_gtest(test_cece_cap MAIN OWN PROPERTIES ENVIRONMENT "FI_PROVIDER=tcp")
+  cece_add_gtest(
+    test_cece_cap
+    MAIN OWN
+    PROPERTIES ENVIRONMENT "FI_PROVIDER=tcp" RESOURCE_LOCK cece_config_yaml
+  )
   cece_add_gtest(test_diagnostics MAIN KOKKOS PROPERTIES ENVIRONMENT "FI_PROVIDER=tcp")
 
   # Fortran helpers for the field creation / pointer passing tests.
@@ -540,14 +544,14 @@ if(ESMF_FOUND)
     MAIN MPI_KOKKOS
     LINK ${_esmf_test_helpers}
     MPI_LAUNCHER
-    PROPERTIES ENVIRONMENT "FI_PROVIDER=tcp" PROCESSORS 1
+    PROPERTIES ENVIRONMENT "FI_PROVIDER=tcp" PROCESSORS 1 RESOURCE_LOCK cece_config_yaml
   )
   cece_add_gtest(
     test_field_creation_error_handling
     MAIN MPI_KOKKOS
     LINK ${_esmf_test_helpers}
     MPI_LAUNCHER
-    PROPERTIES PROCESSORS 1
+    PROPERTIES PROCESSORS 1 RESOURCE_LOCK cece_config_yaml
   )
   # Unit tests for field pointer passing (Requirement R5)
   cece_add_gtest(
@@ -555,7 +559,7 @@ if(ESMF_FOUND)
     MAIN MPI_KOKKOS
     LINK ${_esmf_test_helpers}
     MPI_LAUNCHER
-    PROPERTIES ENVIRONMENT "FI_PROVIDER=tcp" PROCESSORS 1
+    PROPERTIES ENVIRONMENT "FI_PROVIDER=tcp" PROCESSORS 1 RESOURCE_LOCK cece_config_yaml
   )
 endif()
 
@@ -752,6 +756,11 @@ if(Python3_Interpreter_FOUND)
   cece_add_pytest(
     test_validate_cece_config_python
     test_validate_cece_config.py
+    "${PROJECT_SOURCE_DIR}/scripts"
+  )
+  cece_add_pytest(
+    test_verify_submodules_python
+    test_verify_submodules.py
     "${PROJECT_SOURCE_DIR}/scripts"
   )
   cece_add_pytest(test_megan_global_source_conformance_python test_megan_global_parity.py "")
