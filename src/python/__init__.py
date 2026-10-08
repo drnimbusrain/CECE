@@ -31,12 +31,21 @@ __all__ = [
     "CeceField",
     "CeceState",
     "CeceStateError",
+    "DataStreamConfig",
+    "DataVariableConfig",
+    "DiagnosticsConfig",
+    "DriverConfig",
     "EarthAccessStreamBridge",
     "EarthAccessStreamConfig",
     "EarthAccessStreamResolver",
     "EmissionLayer",
+    "GridConfig",
     "LocalTimeConfig",
+    "OutputConfig",
+    "OutputFieldConfig",
+    "PhysicsSchemeConfig",
     "VerticalDistributionConfig",
+    "VerticalGridConfig",
     "compute",
     "finalize",
     "get_available_execution_spaces",
@@ -60,9 +69,18 @@ import numpy as np
 from . import _cece_core
 from .config import (
     CeceConfig,
+    DataStreamConfig,
+    DataVariableConfig,
+    DiagnosticsConfig,
+    DriverConfig,
     EmissionLayer,
+    GridConfig,
     LocalTimeConfig,
+    OutputConfig,
+    OutputFieldConfig,
+    PhysicsSchemeConfig,
     VerticalDistributionConfig,
+    VerticalGridConfig,
     parse_earthaccess_streams,
 )
 from .earthaccess_resolver import (
@@ -174,6 +192,8 @@ def _build_cpp_config(config_obj: CeceConfig) -> _cece_core.CeceConfig:
     _cece_core.CeceConfig
         C++ configuration object populated from ``config_obj``.
     """
+    # TODO: copy the remaining layer fields (masks, hierarchy, category, scale_fields,
+    # temporal cycles) plus met/scale/mask mappings and temporal profiles.
     method_map = {
         "single": _cece_core.VerticalDistributionMethod.SINGLE,
         "range": _cece_core.VerticalDistributionMethod.RANGE,
