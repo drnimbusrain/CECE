@@ -826,15 +826,14 @@ TEST_F(CB6ConfigLoadingTest, LoadGocartSpeciationConfig) {
     }
     EXPECT_EQ(profiles["ISOP"], (std::map<std::string, double>{{"ISOP", 1.0}}));
     for (const auto& reference_name : {"racm2", "cracmm"}) {
-        auto reference = loader.Load(src_dir + "/data/speciation/spc_" + reference_name + ".yaml",
-                                     src_dir + "/data/speciation/map_" + reference_name + ".yaml");
+        auto reference =
+            loader.Load(src_dir + "/data/speciation/spc_" + reference_name + ".yaml", src_dir + "/data/speciation/map_" + reference_name + ".yaml");
         std::map<std::string, std::map<std::string, double>> reference_profiles;
         for (const auto& mapping : reference.mappings)
             reference_profiles[mapping.mechanism_species][EmissionClassToString(mapping.emission_class)] = mapping.scale_factor;
         EXPECT_EQ(profiles["MTPA"], reference_profiles["API"]);
         EXPECT_EQ(profiles["LIMO"], reference_profiles["LIM"]);
-        for (const auto& source : {"SQT_HR", "SQT_LR"})
-            EXPECT_DOUBLE_EQ(profiles["MTPO"].at(source), reference_profiles["SESQ"].at(source));
+        for (const auto& source : {"SQT_HR", "SQT_LR"}) EXPECT_DOUBLE_EQ(profiles["MTPO"].at(source), reference_profiles["SESQ"].at(source));
     }
     for (const auto& source : {"MT_PINE", "MT_ACYC", "MT_CAMP", "MT_SABI", "MT_AROM"}) {
         double fraction = 0.0;
@@ -862,10 +861,9 @@ TEST_F(CB6ConfigLoadingTest, GocartAggregateClassOutputs) {
     Kokkos::View<double**, Kokkos::LayoutLeft> class_totals("gocart_classes", 19, nx * ny);
     auto host_totals = Kokkos::create_mirror_view(class_totals);
     Kokkos::deep_copy(host_totals, 99.0);
-    const std::map<EmissionClass, double> fluxes = {{EmissionClass::ISOP, 1.0e-9}, {EmissionClass::MT_PINE, 2.0e-9},
-                                                  {EmissionClass::MT_ACYC, 3.0e-9}, {EmissionClass::MT_CAMP, 4.0e-9},
-                                                  {EmissionClass::MT_SABI, 5.0e-9}, {EmissionClass::MT_AROM, 6.0e-9},
-                                                  {EmissionClass::SQT_HR, 7.0e-9}, {EmissionClass::SQT_LR, 8.0e-9}};
+    const std::map<EmissionClass, double> fluxes = {
+        {EmissionClass::ISOP, 1.0e-9},    {EmissionClass::MT_PINE, 2.0e-9}, {EmissionClass::MT_ACYC, 3.0e-9}, {EmissionClass::MT_CAMP, 4.0e-9},
+        {EmissionClass::MT_SABI, 5.0e-9}, {EmissionClass::MT_AROM, 6.0e-9}, {EmissionClass::SQT_HR, 7.0e-9},  {EmissionClass::SQT_LR, 8.0e-9}};
     for (const auto& [source, flux] : fluxes)
         for (int cell = 0; cell < nx * ny; ++cell) host_totals(static_cast<int>(source), cell) = flux;
     Kokkos::deep_copy(class_totals, host_totals);
