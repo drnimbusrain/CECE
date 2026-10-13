@@ -4,6 +4,7 @@
 #include <mpi.h>
 
 #include <Kokkos_Core.hpp>
+#include <map>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -13,6 +14,21 @@
 #include "cece_config.hpp"
 
 namespace cece {
+
+/**
+ * @struct DiagnosticOut
+ * @brief One diagnostic handed to the writer for a single time step.
+ *
+ * The host view is already synchronized by the caller (the registry owner),
+ * so the writer never touches device memory. Metadata comes from the
+ * diagnostic registry, which is the single source of truth for units and
+ * long_name (contracts/diagnostics-c-api.md §3).
+ */
+struct DiagnosticOut {
+    Kokkos::View<const double***, Kokkos::LayoutLeft, Kokkos::HostSpace> host;  ///< Host-side field values.
+    std::string units;                                                          ///< CF units (may be empty -> omitted).
+    std::string long_name;                                                      ///< Descriptive name (may be empty -> omitted).
+};
 
 class CeceStandaloneWriter {
    public:
@@ -29,7 +45,8 @@ class CeceStandaloneWriter {
     int InitializeWithCoords(const std::string& start_time_iso8601, int nx, int ny, int nz, const std::vector<double>& lon_coords,
                              const std::vector<double>& lat_coords, const std::string& gridspec_file = "");
 
-    int WriteTimeStep(const std::unordered_map<std::string, DualView3D>& export_fields, double time_seconds_since_start, int step_index);
+    int WriteTimeStep(const std::unordered_map<std::string, DualView3D>& export_fields, const std::map<std::string, DiagnosticOut>& diagnostics,
+                      double time_seconds_since_start, int step_index);
 
     void Finalize();
 

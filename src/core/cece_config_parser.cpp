@@ -181,6 +181,9 @@ CeceConfig ParseConfig(const std::string& filename) {
     conf::Value output = root["output"];
     if (output) {
         config.output_config.enabled = output["enabled"] ? output["enabled"].as_bool() : true;
+        // Master opt-in for writing scheme diagnostics into the output file.
+        // Default false keeps emissions-only output byte-identical (SC-005).
+        config.output_config.include_diagnostics = output["include_diagnostics"].bool_or(false);
         config.output_config.directory = string_or(output, "directory", config.output_config.directory);
         config.output_config.filename_pattern = string_or(output, "filename_pattern", config.output_config.filename_pattern);
         config.output_config.frequency_steps = output["frequency_steps"].int_or(config.output_config.frequency_steps);

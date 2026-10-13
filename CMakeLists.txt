@@ -446,6 +446,10 @@ target_link_libraries(test_clock_operations_unit PRIVATE GTest::gtest_main)
 
 add_executable(test_driver_integration_end_to_end tests/test_driver_integration_end_to_end.cpp)
 target_link_libraries(test_driver_integration_end_to_end PRIVATE GTest::gtest_main)
+if(netCDF_FOUND)
+  # Real-driver diagnostics E2E inspects the produced NetCDF files directly.
+  target_link_libraries(test_driver_integration_end_to_end PRIVATE netCDF::netcdf)
+endif()
 
 if(ESMF_FOUND)
   add_executable(test_cece_cap tests/test_cece_cap.cpp)
@@ -468,6 +472,11 @@ target_link_libraries(test_cece_compute PRIVATE cece GTest::gtest_main)
 
 add_executable(test_standalone_writer_attributes tests/test_standalone_writer_attributes.cpp)
 target_link_libraries(test_standalone_writer_attributes PRIVATE cece GTest::gtest)
+
+# Diagnostic publication through the AMIO writer (feature 003, US1) — real
+# NetCDF, no ESMF required.
+add_executable(test_diagnostics_writer tests/test_diagnostics_writer.cpp)
+target_link_libraries(test_diagnostics_writer PRIVATE cece GTest::gtest)
 
 add_executable(test_physics tests/test_physics.cpp)
 target_link_libraries(test_physics PRIVATE cece GTest::gtest_main)
@@ -760,6 +769,7 @@ gtest_discover_tests(test_vertical_distribution_single)
 gtest_discover_tests(test_cece_utils)
 gtest_discover_tests(test_cece_compute)
 gtest_discover_tests(test_diagnostics)
+gtest_discover_tests(test_diagnostics_writer)
 gtest_discover_tests(test_standalone_writer_attributes)
 gtest_discover_tests(test_physics)
 gtest_discover_tests(test_cece_ingestor)
