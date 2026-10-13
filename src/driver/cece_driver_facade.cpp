@@ -496,16 +496,22 @@ bool CeceDriverOrchestrator::AdvanceTime(const std::string& time_iso8601, void* 
             }
 
             // 2. Build (or reuse cached) interpolation weights for this rank's band.
-            //    Weights depend only on the grids, so they are generated once and
-            //    reused for every timestep.
-            auto plan_it = regrid_plans_.find(var_name);
+            //    The weights depend only on the source grid (identified by the input
+            //    file), the mapping algorithm, and this rank's destination band —
+            //    never on which variable's data is later fed through them. Key the
+            //    cache on that identity so all fields of a stream share one plan
+            //    rather than caching a full-grid plan per variable. (nx_, ny_,
+            //    target_lons_/target_lats_ and gridspec_file_ are run-constant, so
+            //    they need not appear in the key; the band is per-rank and constant.)
+            const std::string regrid_plan_key = input_file_path + "|" + mapalgo + "|" + std::to_string(j0) + "-" + std::to_string(j1);
+            auto plan_it = regrid_plans_.find(regrid_plan_key);
             if (plan_it == regrid_plans_.end() || !plan_it->second.built) {
                 cece::io::RegridPlan plan;
                 if (!cece::io::build_regrid_plan(read_dataset, nx_, ny_, target_lons_, target_lats_, mapalgo, j0, j1, gridspec_file_, plan)) {
                     CECE_LOG_DEBUG("[DRIVER] build_regrid_plan failed for '" + var_name + "'");
                     failure_detail = "regrid plan construction failed (could not read source grid coordinates)";
                 } else {
-                    plan_it = regrid_plans_.emplace(var_name, std::move(plan)).first;
+                    plan_it = regrid_plans_.emplace(regrid_plan_key, std::move(plan)).first;
                 }
             }
 

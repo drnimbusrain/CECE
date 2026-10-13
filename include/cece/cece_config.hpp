@@ -37,7 +37,7 @@ inline SchemeLanguage StringToSchemeLanguage(std::string_view lang) {
     if (lang == "cpp" || lang == "c++" || lang == "cxx" || lang.empty()) return SchemeLanguage::CPP;
     if (lang == "fortran" || lang == "f90" || lang == "f") return SchemeLanguage::FORTRAN;
     if (lang == "python" || lang == "py") return SchemeLanguage::PYTHON;
-    return SchemeLanguage::UNKNOWN;
+    throw std::invalid_argument("Unknown physics scheme language: '" + std::string(lang) + "'. Supported types: 'cpp', 'fortran', 'python'");
 }
 
 inline std::string_view SchemeLanguageToString(SchemeLanguage lang) {
@@ -48,9 +48,10 @@ inline std::string_view SchemeLanguageToString(SchemeLanguage lang) {
             return "fortran";
         case SchemeLanguage::PYTHON:
             return "python";
-        default:
-            return "unknown";
+        case SchemeLanguage::UNKNOWN:
+            break;
     }
+    throw std::invalid_argument("Cannot convert SchemeLanguage::UNKNOWN to a language string");
 }
 
 /**

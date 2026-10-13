@@ -274,6 +274,7 @@ set(
   src/core/cece_physics_factory.cpp
   src/core/cece_provenance.cpp
   src/core/physics/cece_native_example.cpp
+  src/core/physics/cece_example_diagnostic_computation.cpp
   src/core/physics/cece_sea_salt.cpp
   src/core/physics/cece_megan.cpp
   src/core/physics/cece_dms.cpp
@@ -449,10 +450,12 @@ target_link_libraries(test_driver_integration_end_to_end PRIVATE GTest::gtest_ma
 if(ESMF_FOUND)
   add_executable(test_cece_cap tests/test_cece_cap.cpp)
   target_link_libraries(test_cece_cap PRIVATE cece GTest::gtest_main)
-
-  add_executable(test_diagnostics tests/test_diagnostics.cpp)
-  target_link_libraries(test_diagnostics PRIVATE cece GTest::gtest)
 endif()
+
+# The diagnostic registry is framework-free (core only) — its unit tests must
+# build and run without ESMF present (research R8 tier-1).
+add_executable(test_diagnostics tests/test_diagnostics.cpp)
+target_link_libraries(test_diagnostics PRIVATE cece_core GTest::gtest)
 
 add_executable(test_cece_ingestor tests/test_cece_ingestor.cpp)
 target_link_libraries(test_cece_ingestor PRIVATE cece GTest::gtest_main)
@@ -756,6 +759,7 @@ gtest_discover_tests(test_stacking_engine)
 gtest_discover_tests(test_vertical_distribution_single)
 gtest_discover_tests(test_cece_utils)
 gtest_discover_tests(test_cece_compute)
+gtest_discover_tests(test_diagnostics)
 gtest_discover_tests(test_standalone_writer_attributes)
 gtest_discover_tests(test_physics)
 gtest_discover_tests(test_cece_ingestor)
@@ -785,7 +789,6 @@ if(ESMF_FOUND)
     PROPERTIES ENVIRONMENT "FI_PROVIDER=tcp;I_MPI_FABRICS=shm"
   )
   gtest_discover_tests(test_cece_cap PROPERTIES ENVIRONMENT "FI_PROVIDER=tcp;I_MPI_FABRICS=shm")
-  gtest_discover_tests(test_diagnostics PROPERTIES ENVIRONMENT "FI_PROVIDER=tcp;I_MPI_FABRICS=shm")
   gtest_discover_tests(
     test_field_creation
     PROPERTIES ENVIRONMENT "FI_PROVIDER=tcp;I_MPI_FABRICS=shm"

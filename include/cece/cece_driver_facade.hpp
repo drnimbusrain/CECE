@@ -57,9 +57,12 @@ class CeceDriverOrchestrator {
 
     // Cached per-variable stream configuration (parsed once at construction)
     std::unordered_map<std::string, StreamVarConfig> stream_var_configs_;
-    // Cached regridding plans keyed by model variable name. The expensive
-    // interpolation weights are built once (per rank-local destination band)
-    // and reused for every timestep.
+    // Cached regridding plans keyed by grid identity — the source file, the
+    // mapping algorithm, and this rank's destination latitude band — NOT by
+    // variable name. The interpolation weights depend only on those, so every
+    // field of a stream (e.g. BC_agr, BC_ene, ...) reuses a single plan instead
+    // of caching one full-grid plan per variable. Plans are built once and
+    // reused across every timestep.
     std::unordered_map<std::string, io::RegridPlan> regrid_plans_;
     std::unordered_map<std::string, int> file_nt_cache_;
 

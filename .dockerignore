@@ -1,0 +1,57 @@
+# .dockerignore for CECE
+# The dev image bind-mounts the workspace at /work (see setup.sh), so this file
+# mainly guards against accidental `COPY .` context bloat and keeps images lean.
+
+# ---------- VCS ----------
+.git/
+.gitignore
+.gitattributes
+
+# ---------- Build outputs (regenerated inside the container) ----------
+build*/
+bin/
+*.o
+*.a
+*.so
+*.dylib
+*.exe
+compile_commands.json
+CMakeCache.txt
+CMakeFiles/
+Testing/
+
+# ---------- Runtime-generated output ----------
+cece_output/
+output/
+*.nc
+*.nc_manifest.yaml
+amio_*_manifest*.yaml
+PET*.log
+*.ESMF_LogFile
+*.log
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+.venv*/
+venv*/
+.pytest_cache/
+*.egg-info/
+
+# ---------- Docs site / generated ----------
+site/
+
+# ---------- IDE / OS / AI-tool scratch ----------
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.tmp
+.specify/
+.github/agents/
+.github/prompts/
+docs/superpowers/
+
+# ---------- Large/local data (mounted separately when needed) ----------
+data/
