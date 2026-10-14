@@ -84,6 +84,7 @@ import sys
 import warnings
 from datetime import datetime, timedelta
 from pathlib import Path
+from types import ModuleType
 from typing import ClassVar
 from unittest.mock import MagicMock, patch
 
@@ -913,7 +914,19 @@ class TestStandaloneEarthAccessIngestHelper:
 
         _standalone_ingest_mod._raise_if_unsupported_granule_format(stream, granules)
 
-    def test_helper_downloads_before_opening_when_download_dir_is_set(self, tmp_path):
+    @pytest.fixture
+    def earthaccess_exceptions(self, monkeypatch):
+        class EulaNotAccepted(Exception):
+            pass
+
+        exceptions = ModuleType("earthaccess.exceptions")
+        exceptions.EulaNotAccepted = EulaNotAccepted
+        monkeypatch.setitem(sys.modules, "earthaccess.exceptions", exceptions)
+        return exceptions
+
+    def test_helper_downloads_before_opening_when_download_dir_is_set(
+        self, tmp_path, earthaccess_exceptions
+    ):
         mock_ea = MagicMock()
         mock_ea.login.return_value = MagicMock()
         mock_ea.search_data.return_value = [
@@ -1072,11 +1085,11 @@ class TestStandaloneEarthAccessIngestHelper:
         )
         assert np.allclose(written["MERRA2_RH2M"], 50.0, atol=2.0)
 
-    def test_helper_reports_eula_authorization_failure(self, tmp_path):
-        from earthaccess.exceptions import EulaNotAccepted
-
+    def test_helper_reports_eula_authorization_failure(
+        self, tmp_path, earthaccess_exceptions
+    ):
         mock_ea = MagicMock()
-        mock_ea.download.side_effect = EulaNotAccepted(
+        mock_ea.download.side_effect = earthaccess_exceptions.EulaNotAccepted(
             "Eula Acceptance Failure for https://example.test/file.nc4"
         )
 

@@ -904,10 +904,13 @@ if(Python3_Interpreter_FOUND)
       COMMAND ${VENV_PYTHON} -m pytest ${CMAKE_CURRENT_SOURCE_DIR}/${script} ${ARGN}
       WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
     )
-    set_tests_properties(${name} PROPERTIES FIXTURES_REQUIRED "python_deps_installed")
-    if(pythonpath)
-      set_tests_properties(${name} PROPERTIES ENVIRONMENT "PYTHONPATH=${pythonpath}")
-    endif()
+    # Do not inherit Spack/system Python packages into the test virtual environment.
+    set_tests_properties(
+      ${name}
+      PROPERTIES
+        FIXTURES_REQUIRED "python_deps_installed"
+        ENVIRONMENT "PYTHONPATH=${pythonpath};PYTHONNOUSERSITE=1"
+    )
   endfunction()
 
   cece_add_pytest(test_hemco_to_cece_python test_converters.py "${PROJECT_SOURCE_DIR}/scripts")
