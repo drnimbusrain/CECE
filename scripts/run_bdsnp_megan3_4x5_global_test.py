@@ -548,16 +548,14 @@ def run_scalar_case_validation(
                 else float("inf")
             )
         )
-        out_rows.append(
-            {
-                "case_id": row["case_id"],
-                "expected_emission_per_aef": expected,
-                "hemco_oracle_reproduced": hemco_val,
-                "hemco_reproduction_rel_err": rel_err_hemco_repro,
-                "cece_native_defaults": cece_val,
-                "cece_vs_hemco_rel_diff": rel_diff_cece_vs_hemco,
-            }
-        )
+        out_rows.append({
+            "case_id": row["case_id"],
+            "expected_emission_per_aef": expected,
+            "hemco_oracle_reproduced": hemco_val,
+            "hemco_reproduction_rel_err": rel_err_hemco_repro,
+            "cece_native_defaults": cece_val,
+            "cece_vs_hemco_rel_diff": rel_diff_cece_vs_hemco,
+        })
 
     outdir.mkdir(parents=True, exist_ok=True)
     out_path = outdir / "scalar_case_validation.csv"
