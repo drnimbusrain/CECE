@@ -18,7 +18,6 @@
 #include <Kokkos_Core.hpp>
 #include <algorithm>
 #include <cmath>
-#include <iostream>
 #include <vector>
 
 #include "cece/cece_logger.hpp"
@@ -151,12 +150,13 @@ void Megan3Scheme::Run(CeceImportState& import_state, CeceExportState& export_st
     if (par_diffuse.data() == nullptr) missing_required_fields.push_back("par_diffuse");
     if (suncos.data() == nullptr) missing_required_fields.push_back("solar_cosine");
     if (!missing_required_fields.empty()) {
-        std::cerr << "Megan3Scheme: missing required import field(s): ";
+        std::string message = "Megan3Scheme: missing required import field(s): ";
         for (std::size_t idx = 0; idx < missing_required_fields.size(); ++idx) {
-            if (idx > 0) std::cerr << ", ";
-            std::cerr << missing_required_fields[idx];
+            if (idx > 0) message += ", ";
+            message += missing_required_fields[idx];
         }
-        std::cerr << "; skipping MEGAN3 emission update for this timestep.\n";
+        message += "; skipping MEGAN3 emission update for this timestep.";
+        CECE_LOG_WARNING(message);
         return;
     }
 

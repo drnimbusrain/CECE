@@ -388,6 +388,8 @@ def _download_granules(
 
 
 def _open_dataset(stream: dict, download_dir: Path | None = None) -> Any:
+    # Keep EarthAccess readers lazy so config and staging metadata paths work
+    # without installing the optional cloud extras.
     import earthaccess
     import xarray as xr
 

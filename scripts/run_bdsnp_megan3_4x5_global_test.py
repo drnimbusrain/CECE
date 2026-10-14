@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
-"""Global 4x5 BDSNP + MEGAN3 test run driven by cece_config_earthaccess_4x5_test.yaml.
+"""NumPy diagnostic of BDSNP and MEGAN3 on the global HEMCO 4x5 grid.
 
-This script evaluates CECE's *native* C++ physics equations for the BDSNP
-(soil NO) and MEGAN3 (isoprene) schemes on the exact 72x46 HEMCO 4 deg x 5 deg
-grid used by ``tests/cece_config_earthaccess_4x5_test.yaml``. The equations
-below are transcribed line-for-line from the currently checked-in production
-source so the result reflects what the compiled CECE binary would produce for
-these inputs -- it does not reimplement or approximate the physics.
+This script transcribes CECE's C++ equations for BDSNP (soil NO) and MEGAN3
+(isoprene) into NumPy, using synthetic input fields. It is a diagnostic, not
+an execution of the compiled CECE physics or a substitute for a CECE model run.
 
 Source of the transcribed equations (read at the time this script was written):
   - include/cece/physics/cece_megan.hpp        (get_gamma_* helper functions)
@@ -14,11 +11,8 @@ Source of the transcribed equations (read at the time this script was written):
   - src/core/physics/cece_emission_activity.cpp (per-class LDF/CT1/CLEO/Anew/Agro/Amat/Aold)
   - src/core/physics/cece_bdsnp.cpp            (BdsnpScheme::Run, "bdsnp" branch)
 
-Building the actual Kokkos/pybind11 CECE core was not possible in this
-environment (no Kokkos/ESMF toolchain available), so this driver evaluates the
-transcribed native equations directly in NumPy on the full grid instead of
-calling through ``cece.compute()``. Every constant below is quoted with the
-line/file it came from so the mapping back to the C++ source is auditable.
+The equations are transcribed from the listed sources so the diagnostic's
+calculation is auditable against the production implementation.
 
 The run only supplies the import fields that the earthaccess streams in the
 test config actually provide (LAI from MODIS, soil temperature/moisture from
@@ -32,19 +26,23 @@ Outputs (written to --outdir, default results/bdsnp_megan3_4x5_test/):
   - megan3_vs_hemco_oracle_diff.png     per-cell % difference vs HEMCO 3.12.1
   - megan3_vs_hemco_oracle_zonal.png    zonal-mean comparison
   - scalar_case_validation.csv          the 16 PR #90 oracle cases re-evaluated
-  - summary.txt                         numeric parity report
+  - summary.txt                         numeric diagnostic report
 """
 
 from __future__ import annotations
 
 import argparse
 import csv
+import logging
 import math
+import struct
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 import yaml
 
+LOGGER = logging.getLogger(__name__)
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 # ============================================================================
@@ -59,12 +57,143 @@ LAT = np.array([-89.0] + [-86.0 + 4.0 * i for i in range(44)] + [89.0])
 # ============================================================================
 # Gamma helper functions -- transcribed from include/cece/physics/cece_megan.hpp
 # ============================================================================
-def get_gamma_lai(lai, c1=0.49, c2=0.2):
+@dataclass(frozen=True)
+class MeganParameters:
+    """Constants and diagnostic history defaults for MEGAN3 and its oracle."""
+
+    isop_aef_default: float = 1.0e-9
+    isop_ldf: float = 0.9996
+    isop_ct1: float = 95.0
+    isop_cleo: float = 2.0
+    isop_beta: float = 0.13
+    isop_anew: float = 0.05
+    isop_agro: float = 0.6
+    isop_amat: float = 1.0
+    isop_aold: float = 0.9
+    norm_fac_cece: float = 1.0 / 1.0101081
+    lai_c1: float = 0.49
+    lai_c2: float = 0.2
+    gas_constant: float = 8.3144598e-3
+    ct2: float = 200.0
+    t_opt_c1: float = 313.0
+    t_opt_c2: float = 0.6
+    e_opt_coeff: float = 0.08
+    wm2_to_umol: float = 4.766
+    ptoa_c1: float = 3000.0
+    ptoa_c2: float = 99.0
+    gp_c1: float = 1.0
+    gp_c2: float = 0.0005
+    gp_c3: float = 2.46
+    gp_c4: float = 0.9
+    cece_t_avg_15: float = 297.0
+    cece_par_avg: float = 400.0
+    cece_doy: int = 180
+    cece_dbtwn: float = 30.0
+    co2_ppm: float = 390.0
+    hemco_t_history: float = struct.unpack("f", struct.pack("f", 288.15))[0]
+    hemco_par_history: float = 30.0 + 48.0
+    hemco_doy: int = 171
+    hemco_dbtwn: float = 1.0
+    hemco_ldf: float = 1.0
+    hemco_norm_fac: float = 0.9899364002107353
+    co2_c1: float = 8.9406
+    co2_c2: float = 0.0024
+
+
+@dataclass(frozen=True)
+class BdsnpParameters:
+    """Constants and default inputs for the BDSNP diagnostic."""
+
+    molecular_weight_no: float = 30.0
+    unit_conversion: float = 1.0e-12 / 14.0 * 30.0
+    fertilizer_emission_factor: float = 1.0
+    wet_deposition_scaling: float = 1.0
+    dry_deposition_scaling: float = 1.0
+    pulse_decay: float = 0.5
+    base_emission_factor: float = 1.0
+    nitrogen_deposition: float = 0.0
+    moisture_ramp_limit: float = 0.3
+    moisture_decay: float = 0.5
+    canopy_extinction: float = 0.24
+    temperature_response: float = 0.103
+    temperature_cap_c: float = 30.0
+    freezing_point_k: float = 273.15
+
+
+@dataclass(frozen=True)
+class MeganInputs:
+    """The seven shared arrays consumed by the MEGAN3 activity calculation."""
+
+    temperature: np.ndarray
+    leaf_area_index: np.ndarray
+    leaf_area_index_prev: np.ndarray
+    par_direct: np.ndarray
+    par_diffuse: np.ndarray
+    solar_cosine: np.ndarray
+    soil_moisture_root: np.ndarray
+
+
+@dataclass(frozen=True)
+class BdsnpInputs:
+    """The shared arrays consumed by the BDSNP emission calculation."""
+
+    soil_temperature: np.ndarray
+    soil_moisture: np.ndarray
+    leaf_area_index: np.ndarray
+
+
+@dataclass(frozen=True)
+class DiagnosticFields:
+    """Shared global input fields used by the diagnostic and its plots."""
+
+    lon2d: np.ndarray
+    lat2d: np.ndarray
+    land: np.ndarray
+    leaf_area_index: np.ndarray
+    leaf_area_index_prev: np.ndarray
+    par_direct: np.ndarray
+    par_diffuse: np.ndarray
+    solar_cosine: np.ndarray
+    temperature: np.ndarray
+    soil_temperature: np.ndarray
+    soil_moisture: np.ndarray
+    soil_moisture_root: np.ndarray
+
+    @property
+    def megan(self) -> MeganInputs:
+        return MeganInputs(
+            self.temperature,
+            self.leaf_area_index,
+            self.leaf_area_index_prev,
+            self.par_direct,
+            self.par_diffuse,
+            self.solar_cosine,
+            self.soil_moisture_root,
+        )
+
+    @property
+    def bdsnp(self) -> BdsnpInputs:
+        return BdsnpInputs(
+            self.soil_temperature, self.soil_moisture, self.leaf_area_index
+        )
+
+
+MEGAN = MeganParameters()
+BDSNP = BdsnpParameters()
+
+
+def get_gamma_lai(lai: np.ndarray, params: MeganParameters = MEGAN) -> np.ndarray:
     """cece_megan.hpp get_gamma_lai(), non-bidirectional branch."""
-    return c1 * lai / np.sqrt(1.0 + c2 * lai * lai)
+    return params.lai_c1 * lai / np.sqrt(1.0 + params.lai_c2 * lai * lai)
 
 
-def get_gamma_age(cmlai, pmlai, dbtwn, tt, an, ag, am, ao):
+def get_gamma_age(
+    cmlai: np.ndarray,
+    pmlai: np.ndarray,
+    dbtwn: float,
+    tt: np.ndarray,
+    params: MeganParameters = MEGAN,
+) -> np.ndarray:
     """cece_megan.hpp get_gamma_age(), vectorized."""
     cmlai, pmlai, dbtwn, tt = np.broadcast_arrays(
         np.asarray(cmlai, dtype=float),
@@ -107,10 +236,16 @@ def get_gamma_age(cmlai, pmlai, dbtwn, tt, an, ag, am, ao):
     fold = np.where(senesce, fold_senesce, fold)
     fmat = np.where(senesce, fmat_senesce, fmat)
 
-    return np.maximum(fnew * an + fgro * ag + fmat * am + fold * ao, 0.0)
+    return np.maximum(
+        fnew * params.isop_anew
+        + fgro * params.isop_agro
+        + fmat * params.isop_amat
+        + fold * params.isop_aold,
+        0.0,
+    )
 
 
-def get_gamma_sm(gwetroot, is_ald2_or_eoh=False):
+def get_gamma_sm(gwetroot: np.ndarray, is_ald2_or_eoh: bool = False) -> np.ndarray:
     """cece_megan.hpp get_gamma_sm(); MEGAN3 ISOP calls this with is_ald2_or_eoh=False -> 1.0."""
     return (
         np.ones_like(gwetroot)
@@ -119,123 +254,79 @@ def get_gamma_sm(gwetroot, is_ald2_or_eoh=False):
     )
 
 
-def get_gamma_t_li(temp, beta=0.13, t_standard=303.0):
-    return np.exp(beta * (temp - t_standard))
+def get_gamma_t_li(temp: np.ndarray, params: MeganParameters = MEGAN) -> np.ndarray:
+    return np.exp(params.isop_beta * (temp - 303.0))
 
 
-def get_gamma_t_ld(T, pt_15, ct1, ceo, R, ct2, t_opt_c1, t_opt_c2, e_opt_coeff):
-    e_opt = ceo * np.exp(e_opt_coeff * (pt_15 - 297.0))
-    t_opt = t_opt_c1 + t_opt_c2 * (pt_15 - 297.0)
-    x = (1.0 / t_opt - 1.0 / T) / R
-    c_t = e_opt * ct2 * np.exp(ct1 * x) / (ct2 - ct1 * (1.0 - np.exp(ct2 * x)))
+def get_gamma_t_ld(
+    temperature: np.ndarray, t_avg_15: float, params: MeganParameters = MEGAN
+) -> np.ndarray:
+    e_opt = params.isop_cleo * np.exp(params.e_opt_coeff * (t_avg_15 - 297.0))
+    t_opt = params.t_opt_c1 + params.t_opt_c2 * (t_avg_15 - 297.0)
+    x = (1.0 / t_opt - 1.0 / temperature) / params.gas_constant
+    c_t = (
+        e_opt
+        * params.ct2
+        * np.exp(params.isop_ct1 * x)
+        / (params.ct2 - params.isop_ct1 * (1.0 - np.exp(params.ct2 * x)))
+    )
     return np.maximum(c_t, 0.0)
 
 
 def get_gamma_par_pceea(
-    q_dir,
-    q_diff,
-    par_avg,
-    suncos,
-    doy,
-    wm2_to_umol,
-    ptoa_c1,
-    ptoa_c2,
-    gp1,
-    gp2,
-    gp3,
-    gp4,
-):
-    pac_instant = (q_dir + q_diff) * wm2_to_umol
-    pac_daily = par_avg * wm2_to_umol
-    ptoa = ptoa_c1 + ptoa_c2 * np.cos(2.0 * np.pi * (doy - 10.0) / 365.0)
+    q_dir: np.ndarray,
+    q_diff: np.ndarray,
+    par_avg: float,
+    suncos: np.ndarray,
+    doy: int,
+    params: MeganParameters = MEGAN,
+) -> np.ndarray:
+    pac_instant = (q_dir + q_diff) * params.wm2_to_umol
+    pac_daily = par_avg * params.wm2_to_umol
+    ptoa = params.ptoa_c1 + params.ptoa_c2 * np.cos(2.0 * np.pi * (doy - 10.0) / 365.0)
     with np.errstate(divide="ignore", invalid="ignore"):
         phi = pac_instant / (suncos * ptoa)
-        bbb = gp1 + gp2 * (pac_daily - 400.0)
-        aaa = (gp3 * bbb * phi) - (gp4 * phi * phi)
+        bbb = params.gp_c1 + params.gp_c2 * (pac_daily - 400.0)
+        aaa = (params.gp_c3 * bbb * phi) - (params.gp_c4 * phi * phi)
         gamma_p = suncos * aaa
     gamma_p = np.where(suncos <= 0.0, 0.0, gamma_p)
     return np.maximum(gamma_p, 0.0)
 
 
-def get_gamma_co2(co2a, c1=8.9406, c2=0.0024):
+def get_gamma_co2(co2a: float, params: MeganParameters = MEGAN) -> float:
     """cece_megan.hpp get_gamma_co2(), use_wilkinson=False branch (CECE default)."""
-    return c1 / (1.0 + c1 * c2 * co2a)
+    return params.co2_c1 / (1.0 + params.co2_c1 * params.co2_c2 * co2a)
 
 
 # ============================================================================
-# MEGAN3 ISOP class constants -- src/core/physics/cece_emission_activity.cpp
-# (class index 0 == ISOP) and src/core/physics/cece_megan3.cpp
-# ============================================================================
-ISOP_AEF_DEFAULT = 1.0e-9  # cece_megan3.cpp kDefaultAef[0], kg isoprene m-2 s-1
-ISOP_LDF = 0.9996  # cece_emission_activity.cpp kDefaultLdf[0]
-ISOP_CT1 = 95.0  # kDefaultCt1[0]
-ISOP_CLEO = 2.0  # kDefaultCleo[0]
-ISOP_BETA = 0.13  # cece_megan3.cpp STD constant used for all classes
-ISOP_ANEW, ISOP_AGRO, ISOP_AMAT, ISOP_AOLD = (
-    0.05,
-    0.6,
-    1.0,
-    0.9,
-)  # kDefault{Anew,Agro,Amat,Aold}[0]
-
-NORM_FAC_CECE = 1.0 / 1.0101081  # cece_megan3.cpp literal constant
-LAI_C1, LAI_C2 = 0.49, 0.2
-GAS_CONSTANT = 8.3144598e-3
-CT2_CONST = 200.0
-T_OPT_C1, T_OPT_C2, E_OPT_COEFF = 313.0, 0.6, 0.08
-WM2_TO_UMOL = 4.766
-PTOA_C1, PTOA_C2 = 3000.0, 99.0
-GP_C1, GP_C2, GP_C3, GP_C4 = 1.0, 0.0005, 2.46, 0.9
-
-# Hard-coded "no dynamic history" defaults actually used by Megan3Scheme::Run
-# today (cece_megan3.cpp, inside the Kokkos kernel) -- these are NOT the HEMCO
-# cold-start values; CECE does not yet feed a running 5-day/12-hour history in.
-CECE_T_AVG_15 = 297.0
-CECE_PAR_AVG = 400.0
-CECE_DOY = 180
-CECE_DBTWN = 30.0
-CECE_CO2_PPM = 390.0  # tests/cece_config_earthaccess_4x5_test.yaml does not set
-# a co2 concentration; 390 ppm mirrors the HEMCO oracle
-# fixture so the gamma_co2 term is directly comparable.
-
-
-def megan3_isop_activity_factor_cece(T, L, L_prev, pdr, pdf, sc, gwetroot):
-    """Reproduces the per-cell ISOP term inside Megan3Scheme::Run exactly,
-    using the scheme's real (hard-coded) history defaults."""
-    g_lai_c = get_gamma_lai(L, LAI_C1, LAI_C2)
+def megan3_isop_activity_factor_cece(
+    fields: MeganInputs, params: MeganParameters = MEGAN
+) -> np.ndarray:
+    """Calculate the transcribed ISOP diagnostic with CECE history defaults."""
+    g_lai_c = get_gamma_lai(fields.leaf_area_index, params)
     g_age_c = get_gamma_age(
-        L, L_prev, CECE_DBTWN, T, ISOP_ANEW, ISOP_AGRO, ISOP_AMAT, ISOP_AOLD
+        fields.leaf_area_index,
+        fields.leaf_area_index_prev,
+        params.cece_dbtwn,
+        fields.temperature,
+        params,
     )
-    g_sm = get_gamma_sm(gwetroot, is_ald2_or_eoh=False)
-    g_t_li = get_gamma_t_li(T, ISOP_BETA, 303.0)
-    g_t_ld = get_gamma_t_ld(
-        T,
-        CECE_T_AVG_15,
-        ISOP_CT1,
-        ISOP_CLEO,
-        GAS_CONSTANT,
-        CT2_CONST,
-        T_OPT_C1,
-        T_OPT_C2,
-        E_OPT_COEFF,
-    )
+    g_sm = get_gamma_sm(fields.soil_moisture_root, is_ald2_or_eoh=False)
+    g_t_li = get_gamma_t_li(fields.temperature, params)
+    g_t_ld = get_gamma_t_ld(fields.temperature, params.cece_t_avg_15, params)
     g_par = get_gamma_par_pceea(
-        pdr,
-        pdf,
-        CECE_PAR_AVG,
-        sc,
-        CECE_DOY,
-        WM2_TO_UMOL,
-        PTOA_C1,
-        PTOA_C2,
-        GP_C1,
-        GP_C2,
-        GP_C3,
-        GP_C4,
+        fields.par_direct,
+        fields.par_diffuse,
+        params.cece_par_avg,
+        fields.solar_cosine,
+        params.cece_doy,
+        params,
     )
-    gamma_co2_val = get_gamma_co2(CECE_CO2_PPM)
-    ldf_combined = (1.0 - ISOP_LDF) * g_t_li + ISOP_LDF * g_par * g_t_ld
-    return NORM_FAC_CECE * g_lai_c * g_age_c * g_sm * gamma_co2_val * ldf_combined
+    gamma_co2_val = get_gamma_co2(params.co2_ppm, params)
+    ldf_combined = (1.0 - params.isop_ldf) * g_t_li + params.isop_ldf * g_par * g_t_ld
+    return (
+        params.norm_fac_cece * g_lai_c * g_age_c * g_sm * gamma_co2_val * ldf_combined
+    )
 
 
 # ============================================================================
@@ -245,102 +336,86 @@ def megan3_isop_activity_factor_cece(T, L, L_prev, pdr, pdf, sc, gwetroot):
 # LDF=1.0, dbtwn=1 day). Used here as the independent HEMCO-source-transcribed
 # reference for the diagnostic comparison; it is not an executed HEMCO run.
 # ============================================================================
-import struct
-
-HEMCO_T_HISTORY = struct.unpack("f", struct.pack("f", 288.15))[0]
-HEMCO_PARDR_HISTORY = 30.0
-HEMCO_PARDF_HISTORY = 48.0
-HEMCO_DOY = 171
-HEMCO_DBTWN = 1.0
-HEMCO_LDF = 1.0
-HEMCO_NORM_FAC = 0.9899364002107353  # PR #90 tests/data/hemco_megan/README.md
-
-
-def megan_isop_activity_factor_hemco(T, L, L_prev, pdr, pdf, sc, co2_ppm=390.0):
-    g_lai = get_gamma_lai(L, LAI_C1, LAI_C2)
+def megan_isop_activity_factor_hemco(
+    fields: MeganInputs, co2_ppm: float, params: MeganParameters = MEGAN
+) -> np.ndarray:
+    g_lai = get_gamma_lai(fields.leaf_area_index, params)
     g_age = get_gamma_age(
-        L, L_prev, HEMCO_DBTWN, T, ISOP_ANEW, ISOP_AGRO, ISOP_AMAT, ISOP_AOLD
+        fields.leaf_area_index,
+        fields.leaf_area_index_prev,
+        params.hemco_dbtwn,
+        fields.temperature,
+        params,
     )
-    g_t_li = get_gamma_t_li(T, ISOP_BETA, 303.0)
-    g_t_ld = get_gamma_t_ld(
-        T,
-        HEMCO_T_HISTORY,
-        ISOP_CT1,
-        ISOP_CLEO,
-        GAS_CONSTANT,
-        CT2_CONST,
-        T_OPT_C1,
-        T_OPT_C2,
-        E_OPT_COEFF,
-    )
+    g_t_li = get_gamma_t_li(fields.temperature, params)
+    g_t_ld = get_gamma_t_ld(fields.temperature, params.hemco_t_history, params)
     g_par = get_gamma_par_pceea(
-        pdr,
-        pdf,
-        HEMCO_PARDR_HISTORY + HEMCO_PARDF_HISTORY,
-        sc,
-        HEMCO_DOY,
-        WM2_TO_UMOL,
-        PTOA_C1,
-        PTOA_C2,
-        GP_C1,
-        GP_C2,
-        GP_C3,
-        GP_C4,
+        fields.par_direct,
+        fields.par_diffuse,
+        params.hemco_par_history,
+        fields.solar_cosine,
+        params.hemco_doy,
+        params,
     )
-    gamma_co2_val = get_gamma_co2(co2_ppm)
-    ldf_combined = (1.0 - HEMCO_LDF) * g_t_li + HEMCO_LDF * g_par * g_t_ld
-    return HEMCO_NORM_FAC * g_age * g_lai * gamma_co2_val * ldf_combined
+    gamma_co2_val = get_gamma_co2(co2_ppm, params)
+    ldf_combined = (1.0 - params.hemco_ldf) * g_t_li + params.hemco_ldf * g_par * g_t_ld
+    return params.hemco_norm_fac * g_age * g_lai * gamma_co2_val * ldf_combined
 
 
 # ============================================================================
 # BDSNP constants -- src/core/physics/cece_bdsnp.cpp, "bdsnp" (default) branch
 # ============================================================================
-BDSNP_MW_NO = 30.0
-BDSNP_UNITCONV = 1.0e-12 / 14.0 * BDSNP_MW_NO  # ng N -> kg NO
-BDSNP_FERT_EF = 1.0
-BDSNP_WET_DEP_SCALING = 1.0
-BDSNP_DRY_DEP_SCALING = 1.0
-BDSNP_PULSE_DECAY = 0.5
-
-
-def bdsnp_moisture_factor(sm):
+def bdsnp_moisture_factor(
+    sm: np.ndarray, params: BdsnpParameters = BDSNP
+) -> np.ndarray:
     sm = np.asarray(sm, dtype=float)
-    ramp = sm / 0.3
-    decay = 1.0 - 0.5 * (sm - 0.3) / 0.7
-    out = np.where(sm <= 0.0, 0.0, np.where(sm <= 0.3, ramp, decay))
-    return out
+    ramp = sm / params.moisture_ramp_limit
+    decay = 1.0 - params.moisture_decay * (sm - params.moisture_ramp_limit) / (
+        1.0 - params.moisture_ramp_limit
+    )
+    return np.where(
+        sm <= 0.0, 0.0, np.where(sm <= params.moisture_ramp_limit, ramp, decay)
+    )
 
 
-def bdsnp_ndep_factor(
-    ndep, fert_ef=BDSNP_FERT_EF, wet=BDSNP_WET_DEP_SCALING, dry=BDSNP_DRY_DEP_SCALING
-):
-    return 1.0 + fert_ef * (ndep * (wet + dry))
+def bdsnp_ndep_factor(ndep: float, params: BdsnpParameters = BDSNP) -> float:
+    return 1.0 + params.fertilizer_emission_factor * ndep * (
+        params.wet_deposition_scaling + params.dry_deposition_scaling
+    )
 
 
-def bdsnp_canopy_reduction(lai):
-    return np.exp(-0.24 * np.asarray(lai, dtype=float))
+def bdsnp_canopy_reduction(
+    lai: np.ndarray, params: BdsnpParameters = BDSNP
+) -> np.ndarray:
+    return np.exp(-params.canopy_extinction * np.asarray(lai, dtype=float))
 
 
-def bdsnp_soil_no_emission(soil_temp_k, soil_moisture, lai, ndep=0.0, base_ef=1.0):
-    """Reproduces BdsnpScheme::Run's "bdsnp" branch exactly (default config,
-    i.e. no nitrogen_deposition/land_use_type/biome_emission_factors streams
-    -- matching what tests/cece_config_earthaccess_4x5_test.yaml supplies)."""
-    tc = soil_temp_k - 273.15
-    t_response = np.exp(0.103 * np.minimum(30.0, tc))
-    sm_factor = bdsnp_moisture_factor(soil_moisture)
-    fert_factor = bdsnp_ndep_factor(ndep)
-    canopy_red = bdsnp_canopy_reduction(lai)
-    pulse = math.exp(-BDSNP_PULSE_DECAY * 0.0)  # no antecedent rain state -> 1.0
+def bdsnp_soil_no_emission(
+    fields: BdsnpInputs, params: BdsnpParameters = BDSNP
+) -> np.ndarray:
+    """Calculate the transcribed ``bdsnp`` branch for diagnostic inputs.
+
+    No nitrogen-deposition, land-use, or biome-emission-factor streams are
+    supplied, matching ``tests/cece_config_earthaccess_4x5_test.yaml``.
+    """
+    tc = fields.soil_temperature - 273.15
+    t_response = np.exp(
+        params.temperature_response * np.minimum(params.temperature_cap_c, tc)
+    )
+    sm_factor = bdsnp_moisture_factor(fields.soil_moisture, params)
+    fert_factor = bdsnp_ndep_factor(params.nitrogen_deposition, params)
+    canopy_red = bdsnp_canopy_reduction(fields.leaf_area_index, params)
+    pulse = math.exp(-params.pulse_decay * 0.0)  # no antecedent rain state -> 1.0
     emiss = (
-        base_ef
-        * BDSNP_UNITCONV
+        params.base_emission_factor
+        * params.unit_conversion
         * t_response
         * sm_factor
         * fert_factor
         * canopy_red
         * pulse
     )
-    return np.where(tc <= 0.0, 0.0, emiss)
+    return np.where(fields.soil_temperature <= params.freezing_point_k, 0.0, emiss)
 
 
 # ============================================================================
@@ -353,13 +428,21 @@ def bdsnp_soil_no_emission(soil_temp_k, soil_moisture, lai, ndep=0.0, base_ef=1.
 # (T 200-340 K, soil moisture 0-1, LAI >= 0) rather than performing a live
 # earthaccess.login()/search_data() call.
 # ============================================================================
-def build_synthetic_fields():
+def build_synthetic_fields() -> DiagnosticFields:
     lon2d, lat2d = np.meshgrid(LON, LAT)  # shape (NY, NX)
     abs_lat = np.abs(lat2d)
 
     # Land mask: smooth continents, reused shape from tests/test_megan_global_parity.py
-    def smooth_box(lon, lat, lon1, lon2, lat1, lat2, edge=3.0):
-        def sigmoid(v, lo, hi):
+    def smooth_box(
+        lon: np.ndarray,
+        lat: np.ndarray,
+        lon1: float,
+        lon2: float,
+        lat1: float,
+        lat2: float,
+        edge: float = 3.0,
+    ) -> np.ndarray:
+        def sigmoid(v: np.ndarray, lo: float, hi: float) -> np.ndarray:
             return 0.5 * (np.tanh((v - lo) / edge) - np.tanh((v - hi) / edge))
 
         return np.clip(sigmoid(lon, lon1, lon2) * sigmoid(lat, lat1, lat2), 0.0, 1.0)
@@ -395,23 +478,25 @@ def build_synthetic_fields():
     soil_moisture_root = np.clip(0.45 - 0.003 * abs_lat, 0.05, 0.45)
     soil_moisture = np.clip(soil_moisture_root * 0.9, 0.03, 0.5)
 
-    return {
-        "lon2d": lon2d,
-        "lat2d": lat2d,
-        "land": land,
-        "leaf_area_index": lai,
-        "leaf_area_index_prev": lai_prev,
-        "par_direct": par_direct,
-        "par_diffuse": par_diffuse,
-        "solar_cosine": solar_cosine,
-        "temperature": temperature,
-        "soil_temperature": soil_temperature,
-        "soil_moisture": soil_moisture,
-        "soil_moisture_root": soil_moisture_root,
-    }
+    return DiagnosticFields(
+        lon2d=lon2d,
+        lat2d=lat2d,
+        land=land,
+        leaf_area_index=lai,
+        leaf_area_index_prev=lai_prev,
+        par_direct=par_direct,
+        par_diffuse=par_diffuse,
+        solar_cosine=solar_cosine,
+        temperature=temperature,
+        soil_temperature=soil_temperature,
+        soil_moisture=soil_moisture,
+        soil_moisture_root=soil_moisture_root,
+    )
 
 
-def run_scalar_case_validation(outdir: Path):
+def run_scalar_case_validation(
+    outdir: Path, params: MeganParameters = MEGAN
+) -> tuple[list[dict[str, str | float]], Path]:
     csv_path = (
         REPO_ROOT
         / "tests"
@@ -422,7 +507,7 @@ def run_scalar_case_validation(outdir: Path):
     with open(csv_path, newline="") as fh:
         rows = list(csv.DictReader(fh))
 
-    out_rows = []
+    out_rows: list[dict[str, str | float]] = []
     for row in rows:
         T = float(row["T_K"])
         L = float(row["lai_m2m2"])
@@ -434,8 +519,17 @@ def run_scalar_case_validation(outdir: Path):
         co2 = float(row["co2_ppm"])
         expected = float(row["expected_emission_per_aef"])
 
-        hemco_val = float(megan_isop_activity_factor_hemco(T, L, Lp, pdr, pdf, sc, co2))
-        cece_val = float(megan3_isop_activity_factor_cece(T, L, Lp, pdr, pdf, sc, gw))
+        case_fields = MeganInputs(
+            temperature=np.asarray(T),
+            leaf_area_index=np.asarray(L),
+            leaf_area_index_prev=np.asarray(Lp),
+            par_direct=np.asarray(pdr),
+            par_diffuse=np.asarray(pdf),
+            solar_cosine=np.asarray(sc),
+            soil_moisture_root=np.asarray(gw),
+        )
+        hemco_val = float(megan_isop_activity_factor_hemco(case_fields, co2, params))
+        cece_val = float(megan3_isop_activity_factor_cece(case_fields, params))
         rel_err_hemco_repro = (
             abs(hemco_val - expected) / expected
             if expected > 0.0
@@ -454,14 +548,16 @@ def run_scalar_case_validation(outdir: Path):
                 else float("inf")
             )
         )
-        out_rows.append({
-            "case_id": row["case_id"],
-            "expected_emission_per_aef": expected,
-            "hemco_oracle_reproduced": hemco_val,
-            "hemco_reproduction_rel_err": rel_err_hemco_repro,
-            "cece_native_defaults": cece_val,
-            "cece_vs_hemco_rel_diff": rel_diff_cece_vs_hemco,
-        })
+        out_rows.append(
+            {
+                "case_id": row["case_id"],
+                "expected_emission_per_aef": expected,
+                "hemco_oracle_reproduced": hemco_val,
+                "hemco_reproduction_rel_err": rel_err_hemco_repro,
+                "cece_native_defaults": cece_val,
+                "cece_vs_hemco_rel_diff": rel_diff_cece_vs_hemco,
+            }
+        )
 
     outdir.mkdir(parents=True, exist_ok=True)
     out_path = outdir / "scalar_case_validation.csv"
@@ -476,20 +572,20 @@ def run_scalar_case_validation(outdir: Path):
 
 
 def make_plots(
-    fields,
-    isop_emission,
-    soil_no_emission,
-    isop_activity_cece,
-    isop_activity_hemco,
+    fields: DiagnosticFields,
+    isop_emission: np.ndarray,
+    soil_no_emission: np.ndarray,
+    isop_activity_cece: np.ndarray,
+    isop_activity_hemco: np.ndarray,
     outdir: Path,
-):
+) -> None:
     import matplotlib
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
     outdir.mkdir(parents=True, exist_ok=True)
-    lon2d, lat2d = fields["lon2d"], fields["lat2d"]
+    lon2d, lat2d = fields.lon2d, fields.lat2d
 
     # --- Global isoprene (MEGAN3) map ---
     fig, ax = plt.subplots(figsize=(10, 5), constrained_layout=True)
@@ -501,7 +597,7 @@ def make_plots(
         lon2d, lat2d, isop_mgC, shading="auto", cmap="YlOrRd", vmin=0.0, vmax=vmax
     )
     ax.set(
-        title="CECE native MEGAN3 ISOP emission (4x5 test grid)",
+        title="MEGAN3 NumPy diagnostic ISOP emission (4x5 grid)",
         xlabel="Longitude [deg]",
         ylabel="Latitude [deg]",
     )
@@ -512,7 +608,7 @@ def make_plots(
     # --- Global soil NO (BDSNP) map ---
     fig, ax = plt.subplots(figsize=(10, 5), constrained_layout=True)
     soil_no_ngNm2s = (
-        soil_no_emission * 1.0e12 / BDSNP_MW_NO * 14.0
+        soil_no_emission * 1.0e12 / BDSNP.molecular_weight_no * 14.0
     )  # kg NO -> ng N m-2 s-1
     vmax_no = float(np.percentile(soil_no_ngNm2s, 99.0)) or 1.0
     im = ax.pcolormesh(
@@ -525,7 +621,7 @@ def make_plots(
         vmax=vmax_no,
     )
     ax.set(
-        title="CECE native BDSNP soil NO emission (4x5 test grid)",
+        title="BDSNP NumPy diagnostic soil NO emission (4x5 grid)",
         xlabel="Longitude [deg]",
         ylabel="Latitude [deg]",
     )
@@ -533,7 +629,7 @@ def make_plots(
     fig.savefig(outdir / "global_soil_no_bdsnp.png", dpi=180)
     plt.close(fig)
 
-    # --- CECE-native vs HEMCO-oracle percent-difference map (activity factor) ---
+    # --- CECE-equation diagnostic vs HEMCO-oracle percent difference ---
     with np.errstate(divide="ignore", invalid="ignore"):
         pct_diff = (
             100.0
@@ -558,7 +654,7 @@ def make_plots(
         vmax=limit,
     )
     ax.set(
-        title="CECE native MEGAN3 vs HEMCO 3.12.1 source oracle: % diff in ISOP activity factor\n"
+        title="MEGAN3 NumPy diagnostic vs HEMCO 3.12.1 source oracle: % diff in ISOP activity factor\n"
         "(diagnostic comparison; CECE lacks HEMCO's running PAR/T history -- see summary.txt)",
         xlabel="Longitude [deg]",
         ylabel="Latitude [deg]",
@@ -572,7 +668,7 @@ def make_plots(
     ax.plot(
         np.nanmean(isop_activity_cece, axis=1),
         LAT,
-        label="CECE native MEGAN3 (current hard-coded history)",
+        label="MEGAN3 NumPy diagnostic (CECE history defaults)",
     )
     ax.plot(
         np.nanmean(isop_activity_hemco, axis=1),
@@ -590,7 +686,8 @@ def make_plots(
     plt.close(fig)
 
 
-def main():
+def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--config",
@@ -612,40 +709,19 @@ def main():
 
     fields = build_synthetic_fields()
 
-    isop_activity_cece = megan3_isop_activity_factor_cece(
-        fields["temperature"],
-        fields["leaf_area_index"],
-        fields["leaf_area_index_prev"],
-        fields["par_direct"],
-        fields["par_diffuse"],
-        fields["solar_cosine"],
-        fields["soil_moisture_root"],
-    )
-    isop_activity_cece = np.where(
-        fields["leaf_area_index"] > 0.0, isop_activity_cece, 0.0
-    )
-    isop_emission = ISOP_AEF_DEFAULT * isop_activity_cece
+    isop_activity_cece = megan3_isop_activity_factor_cece(fields.megan)
+    isop_activity_cece = np.where(fields.leaf_area_index > 0.0, isop_activity_cece, 0.0)
+    isop_emission = MEGAN.isop_aef_default * isop_activity_cece
 
     isop_activity_hemco = megan_isop_activity_factor_hemco(
-        fields["temperature"],
-        fields["leaf_area_index"],
-        fields["leaf_area_index_prev"],
-        fields["par_direct"],
-        fields["par_diffuse"],
-        fields["solar_cosine"],
-        CECE_CO2_PPM,
+        fields.megan,
+        MEGAN.co2_ppm,
     )
     isop_activity_hemco = np.where(
-        fields["leaf_area_index"] > 0.0, isop_activity_hemco, 0.0
+        fields.leaf_area_index > 0.0, isop_activity_hemco, 0.0
     )
 
-    soil_no_emission = bdsnp_soil_no_emission(
-        fields["soil_temperature"],
-        fields["soil_moisture"],
-        fields["leaf_area_index"],
-        ndep=0.0,
-        base_ef=1.0,
-    )
+    soil_no_emission = bdsnp_soil_no_emission(fields.bdsnp)
 
     args.outdir.mkdir(parents=True, exist_ok=True)
     make_plots(
@@ -658,7 +734,7 @@ def main():
     )
     scalar_rows, scalar_csv_path = run_scalar_case_validation(args.outdir)
 
-    valid = fields["leaf_area_index"] > 0.0
+    valid = fields.leaf_area_index > 0.0
     with np.errstate(divide="ignore", invalid="ignore"):
         pct_diff = (
             100.0
@@ -679,7 +755,7 @@ def main():
     ]
 
     lines = [
-        "CECE native BDSNP + MEGAN3 global 4x5 test run",
+        "BDSNP + MEGAN3 NumPy diagnostic on the global 4x5 grid",
         "================================================",
         f"Config: {args.config.relative_to(REPO_ROOT)}",
         (
@@ -688,8 +764,9 @@ def main():
         ),
         "Inputs: synthetic global fields standing in for the earthaccess MODIS/SMAP/CERES",
         "        streams (live NASA Earthdata Login not available in this environment).",
-        "Equations: transcribed directly from the checked-in C++ (cece_megan3.cpp,",
-        "           cece_emission_activity.cpp, cece_megan.hpp, cece_bdsnp.cpp) -- not reimplemented physics.",
+        "Equations: NumPy translations of the checked-in C++ (cece_megan3.cpp,",
+        "           cece_emission_activity.cpp, cece_megan.hpp, cece_bdsnp.cpp).",
+        "This is a diagnostic only; it does not execute the compiled CECE physics.",
         "",
         "-- MEGAN3 ISOP global summary --",
         f"  land cells with LAI>0: {int(valid.sum())} / {NX * NY}",
@@ -699,7 +776,7 @@ def main():
         "-- BDSNP soil NO global summary --",
         f"  mean soil NO emission: {float(soil_no_emission.mean()):.6e} kg NO m-2 s-1",
         f"  max soil NO emission: {float(soil_no_emission.max()):.6e} kg NO m-2 s-1",
-        f"  frozen (soil T <= 0C) cell count: {int(np.sum(fields['soil_temperature'] <= 273.15))}",
+        f"  frozen (soil T <= 0C) cell count: {int(np.sum(fields.soil_temperature <= BDSNP.freezing_point_k))}",
         "",
         "-- Comparison with PR #90 HEMCO 3.12.1 MEGAN source oracle --",
         "  Scope: diagnostic comparison of the isoprene activity-factor term only.",
@@ -710,7 +787,7 @@ def main():
             "(this script's HEMCO-oracle function vs the literal PR #90 CSV values; see scalar_case_validation.csv)"
         ),
         (
-            f"  16-case CECE-native-vs-HEMCO-oracle max relative diff: {max(cece_vs_hemco_scalar):.4f} "
+            f"  16-case CECE-equation-diagnostic-vs-HEMCO-oracle max relative diff: {max(cece_vs_hemco_scalar):.4f} "
             f"({max(cece_vs_hemco_scalar) * 100.0:.1f}%)"
         ),
         (
@@ -730,7 +807,7 @@ def main():
             "no-restart cold-start values (T_DAVG=288.15 K, PARDR/PARDF_DAVG=30/48 W m-2, DOY=171, dbtwn=1 day)."
         ),
         (
-            f"    3. NORM_FAC: CECE uses the literal constant 1/1.0101081 = {NORM_FAC_CECE:.10f}; "
+            f"    3. NORM_FAC: CECE uses the literal constant 1/1.0101081 = {MEGAN.norm_fac_cece:.10f}; "
             "the HEMCO oracle uses the fully-derived 0.9899364002107353 "
             "(difference is negligible, <0.001%)."
         ),
@@ -738,8 +815,8 @@ def main():
         "-- BDSNP HEMCO reference availability --",
         (
             "  No gridded or scalar HEMCO soil-NOx reference data exists in this repository "
-            "(only PR #90's MEGAN oracle is present). This run therefore reports CECE's native "
-            "BDSNP field on its own, cross-checked only for the documented freezing behaviour "
+            "(only PR #90's MEGAN oracle is present). This run therefore reports the "
+            "BDSNP diagnostic field on its own, cross-checked only for the documented freezing behaviour "
             "(emission == 0 for soil T <= 0 C)."
         ),
         "",
@@ -747,8 +824,8 @@ def main():
     ]
     summary_path = args.outdir / "summary.txt"
     summary_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print("\n".join(lines))
-    print(f"\nWrote plots and report to {args.outdir}")
+    LOGGER.info("%s", "\n".join(lines))
+    LOGGER.info("Wrote plots and report to %s", args.outdir)
 
 
 if __name__ == "__main__":

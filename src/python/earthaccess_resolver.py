@@ -5,6 +5,8 @@ from __future__ import annotations
 import warnings
 from dataclasses import dataclass, field
 
+# Keep cloud dependencies optional for users of local CECE streams. Import
+# failures are deferred to resolver use, where the install extra is actionable.
 try:
     import earthaccess
     import xarray as xr

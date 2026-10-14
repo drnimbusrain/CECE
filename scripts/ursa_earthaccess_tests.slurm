@@ -9,6 +9,8 @@
 #SBATCH --output=cece-earthaccess-tests.%j.out
 #SBATCH --error=cece-earthaccess-tests.%j.err
 
+# Manual, site-specific workflow; account, partition, and module names must be
+# configured for the target Ursa allocation before submission.
 set -euo pipefail
 
 # Run from the CECE repository root on an Ursa login node. This prepares the
