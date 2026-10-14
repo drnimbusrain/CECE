@@ -6,6 +6,7 @@
 #include <gtest/gtest.h>
 #include <mpi.h>
 #include <netcdf.h>
+#include <unistd.h>
 
 #include <Kokkos_Core.hpp>
 #include <algorithm>
@@ -34,7 +35,12 @@ double Pattern(int i, int j, int k) {
 class DiagnosticsWriterTest : public ::testing::Test {
    protected:
     void SetUp() override {
-        out_dir_ = fs::temp_directory_path() / "cece_diagnostics_writer_test";
+        // ctest runs each discovered case as its own process, in parallel under
+        // -j; the directory must be unique per process and per test so one
+        // case's remove_all cannot delete another's in-flight output.
+        const auto* info = ::testing::UnitTest::GetInstance()->current_test_info();
+        out_dir_ = fs::temp_directory_path() /
+                   ("cece_diagnostics_writer_test_" + std::string{info->test_suite_name()} + '_' + info->name() + '_' + std::to_string(getpid()));
         fs::remove_all(out_dir_);
         fs::create_directories(out_dir_);
     }
