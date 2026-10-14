@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "cece/cece_band_decomposition.hpp"
 #include "cece_compute.hpp"
 #include "cece_config.hpp"
 
@@ -22,13 +23,19 @@ namespace cece {
  * The host view is already synchronized by the caller (the registry owner),
  * so the writer never touches device memory. Metadata comes from the
  * diagnostic registry, which is the single source of truth for units and
- * long_name (contracts/diagnostics-c-api.md §3).
+ * long_name.
  */
 struct DiagnosticOut {
     Kokkos::View<const double***, Kokkos::LayoutLeft, Kokkos::HostSpace> host;  ///< Host-side field values.
     std::string units;                                                          ///< CF units (may be empty -> omitted).
     std::string long_name;                                                      ///< Descriptive name (may be empty -> omitted).
 };
+
+// Opaque AMIO dataset handle (typedef of void* in amio/amio_types.h). The
+// writer header never includes AMIO, so re-declare the typedef for the
+// private helper's signature; identical typedef re-declarations of the same
+// type are valid C++ and refer to the same entity.
+using amio_dataset_handle_t = void*;
 
 class CeceStandaloneWriter {
    public:
@@ -49,6 +56,8 @@ class CeceStandaloneWriter {
                       double time_seconds_since_start, int step_index);
 
     void Finalize();
+
+    static size_t ResolveStagingBufferCapacity(const CeceOutputConfig& config, int nx, int ny, int nz);
 
     bool IsInitialized() const {
         return initialized_;
@@ -82,7 +91,21 @@ class CeceStandaloneWriter {
     std::string gridspec_file_;
     double last_diag_publish_time_ = -1.0;
 
+    // Band decomposition of the global latitude rows [0, ny_) across comm_.
+    // Computed in Initialize/InitializeWithCoords from ny_ + comm_ and used by
+    // the Output_Gather in WriteTimeStep to assemble the global field on rank 0.
+    BandDecomposition band_;
+
     std::string ResolveFilename(double time_seconds_since_start) const;
+
+    // Write all coordinate variables (lon, lat, lon_bnds, lat_bnds, optional
+    // UGRID mesh, lev, time) into an open WRITE-mode dataset. Extracted from
+    // WriteTimeStep, whose body had grown past 600 lines; this is the
+    // file-owner (rank-0 / single-process) coordinate section only. Throws
+    // std::runtime_error (via check_amio_rc) on any AMIO write failure; the
+    // caller degrades that to skip_file_work so the mandatory field gathers
+    // still run. Steps 4-7 = lon, lat, bounds (+mesh), lev, time.
+    void WriteCoordinateVariables(amio_dataset_handle_t dataset, double time_seconds);
 };
 
 }  // namespace cece

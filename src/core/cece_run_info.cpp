@@ -26,6 +26,7 @@
 
 #include "cece/cece_fatal.hpp"
 #include "cece/cece_log_setup.hpp"
+#include "cece/cece_mpi_env.hpp"
 
 #if defined(__has_include)
 #if __has_include(<Kokkos_Core.hpp>)
@@ -65,11 +66,10 @@ void cece_run_log_setup(const char* config_path, int path_len) {
         config_file.pop_back();
     }
 
-    int mpi_initialized = 0;
-    MPI_Initialized(&mpi_initialized);
+    const bool mpi_live = cece::mpi_environment_ready();
     int my_rank = 0;
     int num_ranks = 1;
-    if (mpi_initialized) {
+    if (mpi_live) {
         MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
         MPI_Comm_size(MPI_COMM_WORLD, &num_ranks);
     }
@@ -134,6 +134,17 @@ void cece_run_log_setup(const char* config_path, int path_len) {
     if (my_rank != 0) {
         return;
     }
+
+    // The banner is a process-wide, once-only artifact: both the driver entry
+    // point and the shared-core initialization (CeceSimulation::create) may
+    // call this function, and the log-redirect state above is already
+    // idempotent. Re-rendering the table on the second call would duplicate
+    // it in the run log, so print it only the first time.
+    static bool banner_printed = false;
+    if (banner_printed) {
+        return;
+    }
+    banner_printed = true;
 
     // Gather thread / execution-space info.
     std::string omp_threads = "(all available)";

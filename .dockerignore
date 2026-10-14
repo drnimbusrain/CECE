@@ -1,57 +1,61 @@
-# .dockerignore for CECE
-# The dev image bind-mounts the workspace at /work (see setup.sh), so this file
-# mainly guards against accidental `COPY .` context bloat and keeps images lean.
+# Docker build context ignore list for CECE.
+# The repo is normally mounted at runtime (setup.sh -> /work), but when the
+# context is sent to the daemon, keep it small and free of local build state.
 
-# ---------- VCS ----------
+# Git
 .git/
 .gitignore
 .gitattributes
+.gitmodules
 
-# ---------- Build outputs (regenerated inside the container) ----------
+# Build outputs
 build*/
+cmake-build*/
+out/
 bin/
-*.o
-*.a
-*.so
-*.dylib
-*.exe
-compile_commands.json
-CMakeCache.txt
-CMakeFiles/
-Testing/
-
-# ---------- Runtime-generated output ----------
-cece_output/
-output/
-*.nc
-*.nc_manifest.yaml
-amio_*_manifest*.yaml
-PET*.log
-*.ESMF_LogFile
-*.log
-
-# ---------- Python ----------
-__pycache__/
-*.py[cod]
-.venv*/
-venv*/
-.pytest_cache/
-*.egg-info/
-
-# ---------- Docs site / generated ----------
 site/
 
-# ---------- IDE / OS / AI-tool scratch ----------
-.DS_Store
-Thumbs.db
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv*/
+venv*/
+*.egg-info/
+
+# Generated / large runtime artifacts
+*.nc
+*.nccf
+*.grib2
+*.log
+*.tmp
+*.temp
+core.*
+cece_output/
+output/
+PET*.log
+*.ESMF_LogFile
+
+# IDE / editor
 .vscode/
 .idea/
 *.swp
-*.tmp
+*~
+.DS_Store
+Thumbs.db
+
+# Spec-kit / AI working files
 .specify/
+specs/
+superpowers/
+.superpowers/
+.gemini/
+.kiro/
 .github/agents/
 .github/prompts/
 docs/superpowers/
 
-# ---------- Large/local data (mounted separately when needed) ----------
-data/
+# Docker itself
+Dockerfile
+.dockerignore

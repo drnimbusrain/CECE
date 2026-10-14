@@ -98,7 +98,7 @@ class BasePhysicsScheme : public PhysicsScheme {
         } else {
             // No manager bound (Phase 1): record the config-declared diagnostics
             // as pending declarations so they survive to Phase 2 binding and cap
-            // advertisement instead of being silently dropped (research R1).
+            // advertisement instead of being silently dropped.
             conf::Value diags = config["diagnostics"];
             if (diags.is_defined()) {
                 for (std::size_t i = 0; i < diags.size(); ++i) {
