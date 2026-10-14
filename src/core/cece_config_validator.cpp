@@ -10,6 +10,17 @@
 
 #include "cece/cece_logger.hpp"
 
+namespace {
+
+constexpr int kMinOutputStagingBufferCount = 1;
+constexpr int kMaxOutputStagingBufferCount = 4096;
+constexpr int kMinOutputStagingBufferCapacityBytes = 1;
+constexpr int kMaxOutputStagingBufferCapacityBytes = 1073741824;
+constexpr int kMinOutputStagingTimeoutMs = 1;
+constexpr int kMaxOutputStagingTimeoutMs = 60000;
+
+}  // namespace
+
 namespace cece {
 
 ValidationResult ConfigValidator::ValidateConfig(const conf::Value& config) {

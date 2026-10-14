@@ -20,6 +20,51 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+# Support both package (relative) and direct-module import
+try:
+    from .earthaccess_resolver import EarthAccessStreamConfig, validate_short_names
+except ImportError:
+    try:
+        from earthaccess_resolver import EarthAccessStreamConfig, validate_short_names  # type: ignore[no-redef]
+    except ImportError:
+        import importlib.util
+        import sys
+        from pathlib import Path
+
+        module = sys.modules.get("earthaccess_resolver")
+        if module is None:
+            resolver_path = Path(__file__).with_name("earthaccess_resolver.py")
+            spec = importlib.util.spec_from_file_location(
+                "earthaccess_resolver", resolver_path
+            )
+            if spec is None or spec.loader is None:
+                raise ImportError(
+                    f"Cannot load EarthAccess resolver from {resolver_path}"
+                )
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[spec.name] = module
+            spec.loader.exec_module(module)
+        EarthAccessStreamConfig = module.EarthAccessStreamConfig
+        validate_short_names = module.validate_short_names
+
+
+def _bounding_box_from_grid(
+    grid: dict,
+) -> tuple[float, float, float, float] | None:
+    """Derive an earthaccess ``(west, south, east, north)`` bounding box from a
+    CECE ``driver.grid`` block, or ``None`` if the extents are not present."""
+    if not grid:
+        return None
+    required = ("lon_min", "lon_max", "lat_min", "lat_max")
+    if not all(key in grid for key in required):
+        return None
+    return (
+        float(grid["lon_min"]),
+        float(grid["lat_min"]),
+        float(grid["lon_max"]),
+        float(grid["lat_max"]),
+    )
+
 
 def _require_mapping(value: Any, where: str) -> Mapping:
     if not isinstance(value, Mapping):
@@ -1169,6 +1214,150 @@ class DiagnosticsConfig:
 
 
 @dataclass
+class NuopcFieldSpec:
+    """
+    One field CECE advertises to a NUOPC host component.
+
+    Parameters
+    ----------
+    standard_name : str
+        Coupling-framework standard name. Required, non-empty, and must not
+        contain ``'/'``.
+    units : str, optional
+        Units string. Empty means the framework's canonical units are used.
+        Default is ``""``.
+    name : str, optional
+        State item name. Empty means the species or input key names the field.
+        Default is ``""``.
+    """
+
+    standard_name: str = ""
+    units: str = ""
+    name: str = ""
+
+    def validate(self, where: str) -> None:
+        _validate_string(self.standard_name, f"{where}.standard_name")
+        if "/" in self.standard_name:
+            raise ValueError(
+                f"{where}.standard_name: 'standard_name' and 'name' must not contain '/'"
+            )
+        _validate_string(self.units, f"{where}.units", allow_empty=True)
+        _validate_string(self.name, f"{where}.name", allow_empty=True)
+        if "/" in self.name:
+            raise ValueError(
+                f"{where}.name: 'standard_name' and 'name' must not contain '/'"
+            )
+
+    @classmethod
+    def from_value(cls, data: Any, where: str) -> NuopcFieldSpec:
+        values = _require_mapping(data, where)
+        for key in values:
+            if key not in {"standard_name", "units", "name"}:
+                raise ValueError(f"{where}: unknown attribute {key!r}")
+        for key, item in values.items():
+            _validate_string(item, f"{where}.{key}", allow_empty=key != "standard_name")
+        result = cls(
+            standard_name=values.get("standard_name", ""),
+            units=values.get("units", ""),
+            name=values.get("name", ""),
+        )
+        result.validate(where)
+        return result
+
+
+@dataclass
+class NuopcConfig:
+    """
+    Parsed contents of the optional top-level ``nuopc:`` config section.
+
+    Both field maps are kept sorted alphabetically by key so every rank
+    advertises fields in identical order regardless of YAML document order.
+    An absent or empty section leaves both maps empty, which means zero
+    advertised fields and unchanged standalone behavior.
+
+    Parameters
+    ----------
+    export_fields : dict
+        Mapping of emission species name to ``NuopcFieldSpec``, sorted by key.
+    import_fields : dict
+        Mapping of host-provided input name to ``NuopcFieldSpec``, sorted by key.
+    """
+
+    export_fields: dict[str, NuopcFieldSpec] = field(default_factory=dict)
+    import_fields: dict[str, NuopcFieldSpec] = field(default_factory=dict)
+
+    def validate(self) -> None:
+        for name, spec in self.export_fields.items():
+            spec.validate("nuopc.export_fields." + name)
+        for name, spec in self.import_fields.items():
+            spec.validate("nuopc.import_fields." + name)
+
+    @classmethod
+    def from_value(
+        cls,
+        data: Any,
+        species_keys: set[str],
+        input_keys: set[str],
+        where: str = "nuopc",
+    ) -> NuopcConfig:
+        values = _require_mapping(data, where)
+        _reject_unknown_keys(values, {"export_fields", "import_fields"}, where)
+
+        def parse_map(node: Any, section: str, valid_keys: set[str], key_kind: str):
+            result: dict[str, NuopcFieldSpec] = {}
+            if node is None:
+                return result
+            mapping = _require_mapping(node, f"{where}.{section}")
+            for key, item in mapping.items():
+                _validate_string(key, f"{where}.{section} key")
+                if key not in valid_keys:
+                    raise ValueError(
+                        f"{where}.{section}: {key!r} is not a configured {key_kind}."
+                    )
+                result[key] = NuopcFieldSpec.from_value(
+                    item, f"{where}.{section}.{key}"
+                )
+            return dict(sorted(result.items()))
+
+        return cls(
+            export_fields=parse_map(
+                values.get("export_fields"),
+                "export_fields",
+                species_keys,
+                "emission species",
+            ),
+            import_fields=parse_map(
+                values.get("import_fields"),
+                "import_fields",
+                input_keys,
+                "meteorology/scale-factor/mask input",
+            ),
+        )
+
+    def to_value(self) -> dict:
+        """Serialize to a dictionary, omitting empty sections and optional attributes.
+
+        Returns an empty dict when nothing is advertised, so callers can treat
+        an absent and an empty ``nuopc:`` section identically.
+        """
+        result: dict[str, dict] = {}
+        for section, fields in (
+            ("export_fields", self.export_fields),
+            ("import_fields", self.import_fields),
+        ):
+            if fields:
+                result[section] = {
+                    name: {
+                        "standard_name": spec.standard_name,
+                        **({"units": spec.units} if spec.units else {}),
+                        **({"name": spec.name} if spec.name else {}),
+                    }
+                    for name, spec in fields.items()
+                }
+        return result
+
+
+@dataclass
 class VerticalGridConfig:
     type: str = "none"
     ak_field: str = "hyam"
@@ -1304,6 +1493,7 @@ class CeceConfig:
         self._grid: dict[str, Any] = {}
         self._temporal_profiles: dict[str, list] = {}
         self._local_time = LocalTimeConfig()
+        self._nuopc = NuopcConfig()
 
         if config_dict is not None:
             self._from_dict(config_dict)
@@ -1566,6 +1756,7 @@ class CeceConfig:
         if self._vertical_grid_defined:
             capture("vertical_grid", self._vertical_grid_config.validate)
         capture("local_time", self._local_time.validate)
+        capture("nuopc", self._nuopc.validate)
         if self._local_time.enabled is not True:
             for species_name, layers in self._species.items():
                 for index, layer in enumerate(layers):
@@ -1787,7 +1978,13 @@ class CeceConfig:
                 "amio_staging_buffer_capacity_bytes": driver.amio_staging_buffer_capacity_bytes,
                 "amio_prefetch_depth": driver.amio_prefetch_depth,
             }
+        result.update(self._nuopc_section())
         return result
+
+    def _nuopc_section(self) -> dict:
+        """Return the ``nuopc`` entry for serialization, empty when nothing is advertised."""
+        value = self._nuopc.to_value()
+        return {"nuopc": value} if value else {}
 
     @classmethod
     def from_dict(cls, config_dict: dict) -> CeceConfig:
@@ -1837,16 +2034,16 @@ class CeceConfig:
         """
         try:
             import yaml
-        except ImportError:
+        except ImportError as e:
             raise ImportError(
                 "PyYAML is required for YAML parsing. Install with: pip install pyyaml"
-            )
+            ) from e
         try:
             config_dict = yaml.safe_load(yaml_str)
         except yaml.YAMLError as e:
             raise ValueError(f"Invalid YAML: {e!s}")
         if not isinstance(config_dict, dict):
-            raise ValueError("YAML must represent a mapping")
+            raise TypeError("YAML must represent a mapping")
         return cls.from_dict(config_dict)
 
     def _add_stream_from_dict(self, stream_data: Mapping[str, Any]) -> None:
@@ -1920,6 +2117,7 @@ class CeceConfig:
             "output",
             "driver",
             "local_time",
+            "nuopc",
         }
         try:
             _reject_unknown_keys(values, allowed, "configuration")
@@ -2146,6 +2344,21 @@ class CeceConfig:
             if local_time is not None:
                 self._local_time = local_time
 
+        # Parsed last: the field maps cross-reference the species, meteorology,
+        # scale-factor, and mask sections, which must be populated first.
+        if "nuopc" in values:
+            input_keys = (
+                set(self._meteorology) | set(self._scale_factors) | set(self._masks)
+            )
+            nuopc = capture(
+                "nuopc",
+                lambda: NuopcConfig.from_value(
+                    values["nuopc"], set(self._species), input_keys
+                ),
+            )
+            if nuopc is not None:
+                self._nuopc = nuopc
+
         validation = self.validate()
         if not validation:
             errors.extend(validation.errors)
@@ -2200,6 +2413,11 @@ class CeceConfig:
     @property
     def diagnostics(self) -> DiagnosticsConfig | None:
         return self._diagnostics_config
+
+    @property
+    def nuopc(self) -> NuopcConfig:
+        """NuopcConfig : Fields advertised to a NUOPC host component."""
+        return self._nuopc
 
     @property
     def meteorology(self) -> dict[str, str]:

@@ -174,7 +174,6 @@ TEST_F(IngestorTest, CeceIoRejectsEmptyVariableNames) {
     fs::remove(config_path, ec);
     EXPECT_FALSE(ec) << ec.message();
 }
-
 TEST_F(IngestorTest, PreservesTwentyFourLayersInCacheAndImportState) {
     constexpr int nx = 3;
     constexpr int ny = 2;

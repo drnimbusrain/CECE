@@ -17,7 +17,6 @@
 #include <dagr/logging.hpp>
 #include <filesystem>
 #include <fstream>
-#include <iostream>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -389,9 +388,8 @@ void CeceDriverOrchestrator::ResolveStreamConfigsFromFile(const std::string& con
         return;
     }
 
-    // Walk every stream and populate a StreamConfig for each model variable,
-    // keyed by model name. Unlike the legacy inline parse, streams without
-    // variables map their name to itself and malformed entries throw.
+    // Filter EarthAccess streams before resolving local AMIO mappings.
+    std::vector<YAML::Node> local_streams;
     for (const auto& stream : config["cece_data"]["streams"]) {
         if (stream["source"] && stream["source"].as<std::string>() == "earthaccess") {
             continue;
