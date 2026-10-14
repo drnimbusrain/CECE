@@ -102,6 +102,12 @@ The physics scheme generator and other scripts require `jinja2`, `pyyaml`, and `
 python3 -m pip install jinja2 pyyaml pytest
 ```
 
+CTest installs Python test dependencies into an isolated virtual environment
+under `build/python/venv`, prefetched at configure time and checked by the
+`install_python_deps` fixture. These include the cloud packages needed by the
+credential-free EarthAccess tests; a global Python installation is not used
+by that environment. Live Earthdata tests are excluded from CTest.
+
 ### Pull Requests
 Reviewers and approval requirements are defined in [`.github/CODEOWNERS`](https://github.com/ufs-community/CECE/blob/develop/.github/CODEOWNERS); the header of that file explains the policy.
 

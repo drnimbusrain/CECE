@@ -805,6 +805,14 @@ if(Python3_Interpreter_FOUND)
     matplotlib
     netCDF4
     numpy
+    # Cloud extras from pyproject.toml, needed even for mocked EarthAccess tests.
+    "earthaccess>=0.12"
+    "xarray>=2024.1"
+    "h5netcdf>=1.3"
+    "h5py>=3.8"
+    "fsspec>=2024.3"
+    "s3fs>=2024.3"
+    "dask>=2024.3"
   )
 
   # Prefetch the venv + packages at configure time: configure typically runs
