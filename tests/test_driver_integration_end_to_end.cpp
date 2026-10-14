@@ -527,18 +527,29 @@ inline std::optional<DriverPaths> Locate() {
 }
 
 // Render the canonical config with the output directory rewritten to a
-// scratch location and include_diagnostics forced to the requested value.
-// Only actual YAML key lines are touched (comments are left intact).
-inline std::string RenderConfig(const std::filesystem::path& config_path, const std::filesystem::path& out_dir, bool include_diagnostics) {
+// scratch location, include_diagnostics forced to the requested value, and
+// optionally the selection list dropped (write-all) or the publish interval
+// overridden. Only actual YAML key lines are touched (comments stay intact).
+enum class SelectionMode {
+    Keep,  // leave diagnostics:variables as authored
+    Drop,  // remove the variables: line -> write-all mode
+};
+
+inline std::string RenderConfig(const std::filesystem::path& config_path, const std::filesystem::path& out_dir, bool include_diagnostics,
+                                SelectionMode selection = SelectionMode::Keep, int interval_override = -1) {
     std::ifstream in(config_path);
     std::ostringstream rendered;
     std::string line;
     while (std::getline(in, line)) {
-        const bool is_key_line = !line.empty() && line[0] != '#';
+        const bool is_key_line = line.size() >= 2 && line[0] != '#' && line[1] != '#';
         if (is_key_line && line.rfind("  directory:", 0) == 0) {
             rendered << "  directory: " << out_dir.string() << "\n";
         } else if (is_key_line && line.rfind("  include_diagnostics:", 0) == 0) {
             rendered << "  include_diagnostics: " << (include_diagnostics ? "true" : "false") << "\n";
+        } else if (selection == SelectionMode::Drop && is_key_line && line.rfind("  variables:", 0) == 0) {
+            continue;  // drop the selection line entirely -> write-all
+        } else if (interval_override >= 0 && is_key_line && line.rfind("  output_interval_seconds:", 0) == 0) {
+            rendered << "  output_interval_seconds: " << interval_override << "\n";
         } else {
             rendered << line << "\n";
         }
@@ -549,9 +560,10 @@ inline std::string RenderConfig(const std::filesystem::path& config_path, const 
 // Run the driver until it produces NetCDF output. The standalone driver has
 // a pre-existing intermittent AMIO crash during AdvanceTime (unrelated to
 // diagnostics); each attempt starts from an empty directory so a partial
-// file never leaks into the assertions.
+// file never leaks into the assertions. min_files lets tests that depend on
+// the full file sequence (cadence) retry until the run completed.
 inline bool RunDriver(const std::filesystem::path& driver, const std::filesystem::path& config, const std::filesystem::path& out_dir,
-                      int max_attempts = 8) {
+                      int max_attempts = 8, size_t min_files = 1) {
     const std::string command = driver.string() + " " + config.string();
     for (int attempt = 0; attempt < max_attempts; ++attempt) {
         std::error_code ec;
@@ -559,12 +571,16 @@ inline bool RunDriver(const std::filesystem::path& driver, const std::filesystem
         std::filesystem::create_directories(out_dir, ec);
         // NOLINTNEXTLINE(concurrency-mt-unsafe) - single-threaded test main
         std::system((command + " >/dev/null 2>&1").c_str());
+        size_t produced = 0;
         if (!std::filesystem::is_empty(out_dir)) {
             for (const auto& entry : std::filesystem::directory_iterator(out_dir)) {
                 if (entry.path().extension() == ".nc") {
-                    return true;
+                    ++produced;
                 }
             }
+        }
+        if (produced >= min_files) {
+            return true;
         }
     }
     return false;
@@ -657,13 +673,14 @@ class RealDriverDiagnosticsTest : public ::testing::Test {
         }
     }
 
-    // Runs the driver once with the given include_diagnostics setting and
-    // returns the path of the first produced file (empty on failure).
-    std::filesystem::path RunOnce(bool include_diagnostics, const std::string& tag) {
+    // Runs the driver once with the given rendering options and returns the
+    // path of the first produced file (empty on failure).
+    std::filesystem::path RunOnce(bool include_diagnostics, const std::string& tag, SelectionMode selection = SelectionMode::Keep,
+                                  int interval_override = -1) {
         const auto out_dir = scratch_ / tag;
         const auto config = scratch_ / (tag + ".yaml");
         std::ofstream config_file(config);
-        config_file << RenderConfig(paths_->config, out_dir, include_diagnostics);
+        config_file << RenderConfig(paths_->config, out_dir, include_diagnostics, selection, interval_override);
         config_file.close();
         if (!RunDriver(paths_->driver, config, out_dir)) {
             return {};
@@ -675,18 +692,18 @@ class RealDriverDiagnosticsTest : public ::testing::Test {
     std::filesystem::path scratch_;
 };
 
-// US1 acceptance 1 + 2: a scheme that declares and fills diagnostics, with
-// output.include_diagnostics: true, produces the variables with the values
-// the scheme computed and the metadata it registered. (The selection filter
-// from `diagnostics:variables` lands with US2 — in US1 every registered
-// diagnostic is published.)
+// US1 acceptance 1 + 2 with the US2 selection filter active: the canonical
+// config selects only temperature_anomaly, so that variable appears with the
+// values the scheme computed and the metadata it registered, while the
+// registered-but-unselected emission_efficiency is dropped (FR-006).
 TEST_F(RealDriverDiagnosticsTest, DiagnosticsReachFileOutputWithMetadata) {
     const auto nc_path = RunOnce(true, "enabled");
     ASSERT_FALSE(nc_path.empty()) << "driver produced no NetCDF output after retries";
 
     const auto names = VariableNames(nc_path);
     EXPECT_NE(std::find(names.begin(), names.end(), "temperature_anomaly"), names.end()) << "temperature_anomaly missing from " << nc_path;
-    EXPECT_NE(std::find(names.begin(), names.end(), "emission_efficiency"), names.end()) << "emission_efficiency missing from " << nc_path;
+    EXPECT_EQ(std::find(names.begin(), names.end(), "emission_efficiency"), names.end())
+        << "emission_efficiency must be filtered out by the selection";
 
     // Values the scheme computed: no meteorology exists in standalone mode,
     // so the scheme substitutes a zero temperature and the anomaly is
@@ -704,10 +721,6 @@ TEST_F(RealDriverDiagnosticsTest, DiagnosticsReachFileOutputWithMetadata) {
     const auto long_name = ReadTextAttribute(nc_path, "temperature_anomaly", "long_name");
     ASSERT_TRUE(long_name.has_value());
     EXPECT_EQ(*long_name, "Temperature deviation from reference");
-
-    const auto eff_units = ReadTextAttribute(nc_path, "emission_efficiency", "units");
-    ASSERT_TRUE(eff_units.has_value());
-    EXPECT_EQ(*eff_units, "kg/m2/s/K");
 }
 
 // US1 acceptance 3 + FR-010: with diagnostics output disabled the run is
@@ -725,6 +738,51 @@ TEST_F(RealDriverDiagnosticsTest, DiagnosticsAbsentWhenDisabled) {
     // writer always emits — nothing else changed about the run.
     const std::vector<std::string> expected{"lat", "lat_bnds", "lev", "lon", "lon_bnds", "time"};
     EXPECT_EQ(names, expected);
+}
+
+// US2 acceptance 4 (Q2=A): with no variables: selection, every registered
+// diagnostic is published (write-all mode).
+TEST_F(RealDriverDiagnosticsTest, WriteAllWhenSelectionAbsent) {
+    const auto nc_path = RunOnce(true, "writeall", SelectionMode::Drop);
+    ASSERT_FALSE(nc_path.empty()) << "driver produced no NetCDF output after retries";
+
+    const auto names = VariableNames(nc_path);
+    EXPECT_NE(std::find(names.begin(), names.end(), "temperature_anomaly"), names.end());
+    EXPECT_NE(std::find(names.begin(), names.end(), "emission_efficiency"), names.end());
+
+    const auto eff_units = ReadTextAttribute(nc_path, "emission_efficiency", "units");
+    ASSERT_TRUE(eff_units.has_value());
+    EXPECT_EQ(*eff_units, "kg/m2/s/K");
+}
+
+// US2 acceptance 2 (FR-007, R5): the canonical interval is 7200 s while the
+// file cadence is 3600 s — diagnostics publish on every other file, riding
+// the file write they became due on (never dropped, never duplicated).
+TEST_F(RealDriverDiagnosticsTest, CadenceHonoredAcrossFiles) {
+    const auto out_dir = scratch_ / "cadence";
+    const auto config = scratch_ / "cadence.yaml";
+    std::ofstream config_file(config);
+    config_file << RenderConfig(paths_->config, out_dir, true);
+    config_file.close();
+    // The full 6-step sequence must complete; a crash mid-run yields fewer
+    // files, which the retry gate treats as an incomplete attempt.
+    ASSERT_TRUE(RunDriver(paths_->driver, config, out_dir, 8, 6)) << "driver did not produce the full 6-file sequence after retries";
+
+    std::vector<std::filesystem::path> files;
+    for (const auto& entry : std::filesystem::directory_iterator(out_dir)) {
+        if (entry.path().extension() == ".nc") {
+            files.push_back(entry.path());
+        }
+    }
+    std::sort(files.begin(), files.end());
+    // 6 hourly steps at frequency_steps 1 -> 6 files; publish on 1st, 3rd,
+    // 5th (t=3600 first-due, then every 7200 s).
+    ASSERT_EQ(files.size(), 6u);
+    for (size_t i = 0; i < files.size(); ++i) {
+        const auto names = VariableNames(files[i]);
+        const bool present = std::find(names.begin(), names.end(), "temperature_anomaly") != names.end();
+        EXPECT_EQ(present, (i % 2 == 0)) << "unexpected diagnostic presence in " << files[i].filename();
+    }
 }
 
 }  // namespace RealDriver

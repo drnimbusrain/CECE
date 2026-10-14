@@ -54,6 +54,21 @@ class CeceStandaloneWriter {
         return initialized_;
     }
 
+    /**
+     * @brief Seconds since the last diagnostic publication, for cadence.
+     * @details The diagnostic publish interval is independent of the file
+     * write interval: diagnostics ride file writes (R5) but only when due.
+     * -1 means "never published", so the first file write is always due.
+     */
+    double LastDiagnosticPublishTime() const {
+        return last_diag_publish_time_;
+    }
+
+    /// @brief Records a diagnostic publication at the given elapsed time.
+    void MarkDiagnosticsPublished(double time_seconds_since_start) {
+        last_diag_publish_time_ = time_seconds_since_start;
+    }
+
    private:
     CeceOutputConfig config_;
     bool initialized_ = false;
@@ -65,6 +80,7 @@ class CeceStandaloneWriter {
     bool use_custom_coords_ = false;
     MPI_Comm comm_ = MPI_COMM_SELF;
     std::string gridspec_file_;
+    double last_diag_publish_time_ = -1.0;
 
     std::string ResolveFilename(double time_seconds_since_start) const;
 };

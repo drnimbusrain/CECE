@@ -29,6 +29,7 @@
 #include <utility>
 
 #include "cece/cece_diagnostics.hpp"
+#include "cece/cece_logger.hpp"
 
 namespace cece {
 namespace {
@@ -49,6 +50,20 @@ void CeceDiagnosticManager::ValidateName(const std::string& name) const {
     }
     if (std::ranges::find(reserved_names_, name) != reserved_names_.end()) {
         throw std::invalid_argument("diagnostic name '" + name + "' collides with a reserved species name");
+    }
+}
+
+void CeceDiagnosticManager::WarnUnregisteredSelection(const std::vector<std::string>& requested) const {
+    // FR-013: a selected name no scheme ever registered is a non-fatal
+    // configuration gap — warn once per offender, then stay quiet.
+    for (const auto& name : requested) {
+        if (fields_.contains(name) || pending_.contains(name)) {
+            continue;
+        }
+        if (std::ranges::find(warned_selection_names_, name) == warned_selection_names_.end()) {
+            warned_selection_names_.push_back(name);
+            CECE_LOG_WARNING("[CECE] diagnostics:variables requests '" + name + "' but no scheme registered it; skipping publication");
+        }
     }
 }
 

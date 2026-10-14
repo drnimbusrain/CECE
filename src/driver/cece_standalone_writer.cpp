@@ -755,16 +755,42 @@ void cece_core_write_step(void* data_ptr, double time_seconds, int step_index, i
 
     // Diagnostics reach the file only when the output block opts them in
     // (FR-010: absent opt-in means the payload stays empty and the file is
-    // unchanged). Selection/cadence filtering lands with US2 (T015).
+    // unchanged). Two publication rules apply on top of the opt-in:
+    //   - selection: a non-empty diagnostics:variables publishes exactly
+    //     those names; empty/absent publishes all registered (Q2=A).
+    //   - cadence: diagnostics ride file writes but publish only when due,
+    //     i.e. interval 0 (every file write) or the elapsed time since the
+    //     last publication reached output_interval_seconds (research R5).
+    // Values are always read fresh from the registry, so a diagnostic that
+    // became due between file writes is carried, never dropped or
+    // duplicated.
     std::map<std::string, cece::DiagnosticOut> diagnostics;
-    if (d->config.output_config.include_diagnostics && d->diagnostic_manager) {
-        for (const auto& [name, field] : d->diagnostic_manager->Fields()) {
-            auto& view_rw = const_cast<cece::DualView3D&>(field.data);
+    const bool channel_open = d->config.output_config.include_diagnostics && d->diagnostic_manager;
+    const int interval = d->config.diagnostics.output_interval_seconds;
+    const bool due = g_standalone_writer->LastDiagnosticPublishTime() < 0.0 || static_cast<double>(interval) == 0.0 ||
+                     time_seconds - g_standalone_writer->LastDiagnosticPublishTime() >= static_cast<double>(interval);
+    if (channel_open && due) {
+        const auto& selection = d->config.diagnostics.variables;
+        if (!selection.empty()) {
+            d->diagnostic_manager->WarnUnregisteredSelection(selection);
+        }
+        // Order() gives the stable first-seen enumeration; Fields() holds the
+        // allocated data. Iterate the order so manifests stay deterministic.
+        for (const auto& name : d->diagnostic_manager->Order()) {
+            const auto& fields = d->diagnostic_manager->Fields();
+            auto it = fields.find(name);
+            if (it == fields.end()) {
+                continue;  // still pending (no grid) — nothing to publish
+            }
+            if (!selection.empty() && std::find(selection.begin(), selection.end(), name) == selection.end()) {
+                continue;  // not selected (FR-006)
+            }
+            auto& view_rw = const_cast<cece::DualView3D&>(it->second.data);
             view_rw.sync<Kokkos::HostSpace>();
             cece::DiagnosticOut out;
             out.host = Kokkos::View<const double***, Kokkos::LayoutLeft, Kokkos::HostSpace>(view_rw.view_host());
-            out.units = field.units;
-            out.long_name = field.long_name;
+            out.units = it->second.units;
+            out.long_name = it->second.long_name;
             diagnostics.emplace(name, std::move(out));
         }
     }
@@ -773,6 +799,10 @@ void cece_core_write_step(void* data_ptr, double time_seconds, int step_index, i
 
     // Critical: sync to ensure all I/O completes before returning
     Kokkos::fence();
+
+    if (w == 0 && !diagnostics.empty()) {
+        g_standalone_writer->MarkDiagnosticsPublished(time_seconds);
+    }
 
     if (w != 0) {
         std::cerr << "WARNING: cece_core_write_step - WriteTimeStep returned " << w << std::endl;

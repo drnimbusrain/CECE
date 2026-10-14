@@ -96,6 +96,16 @@ class CeceDiagnosticManager {
         return order_;
     }
 
+    /**
+     * @brief Warns, once per name, about selected diagnostics never registered.
+     *
+     * A `diagnostics:variables` entry that no scheme ever registered is a
+     * non-fatal configuration gap (FR-013): publication simply omits it. The
+     * warning is emitted the first time each offender is seen so repeated
+     * publish steps don't spam the log.
+     */
+    void WarnUnregisteredSelection(const std::vector<std::string>& requested) const;
+
     /// @brief True once SetGrid has established the grid extent.
     bool HasGrid() const {
         return grid_set_;
@@ -125,7 +135,8 @@ class CeceDiagnosticManager {
     std::vector<std::string> reserved_names_;
     std::unordered_map<std::string, DiagnosticDeclaration> pending_;
     std::unordered_map<std::string, DiagnosticFieldInfo> fields_;
-    std::vector<std::string> order_;  // first-seen order over pending_ then fields_
+    std::vector<std::string> order_;                           // first-seen order over pending_ then fields_
+    mutable std::vector<std::string> warned_selection_names_;  // FR-013 warn-once state
 };
 
 }  // namespace cece

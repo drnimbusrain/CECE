@@ -433,6 +433,11 @@ enable_testing()
 add_executable(test_driver_configuration tests/test_driver_configuration.cpp)
 target_link_libraries(test_driver_configuration PRIVATE cece GTest::gtest_main)
 
+# Diagnostics configuration surface (feature 003, US2) — framework-free
+# parser tests, same pattern as test_driver_configuration.
+add_executable(test_diagnostics_config tests/test_diagnostics_config.cpp)
+target_link_libraries(test_diagnostics_config PRIVATE cece GTest::gtest_main)
+
 if(ESMF_FOUND)
   add_executable(test_driver_config_validation tests/test_driver_config_validation.cpp)
   target_link_libraries(test_driver_config_validation PRIVATE cece iso8601_utils GTest::gtest_main)
@@ -761,6 +766,7 @@ endif()
 
 include(GoogleTest)
 gtest_discover_tests(test_driver_configuration)
+gtest_discover_tests(test_diagnostics_config)
 gtest_discover_tests(test_driver_clock_management)
 gtest_discover_tests(test_clock_operations_unit)
 gtest_discover_tests(test_driver_integration_end_to_end)

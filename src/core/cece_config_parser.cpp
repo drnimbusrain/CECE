@@ -102,20 +102,6 @@ CeceConfig ParseConfig(const std::string& filename) {
         config.physics_schemes.push_back(std::move(scheme));
     }
 
-    conf::Value diagnostics = root["diagnostics"];
-    if (diagnostics) {
-        if (diagnostics.kind() == conf::Node_Kind::Sequence)
-            config.diagnostics.variables = diagnostics.as_string_list();
-        else {
-            config.diagnostics.output_interval_seconds = diagnostics["output_interval"].int_or(0);
-            config.diagnostics.grid_type = string_or(diagnostics, "grid_type", config.diagnostics.grid_type);
-            config.diagnostics.grid_file = string_or(diagnostics, "grid_file");
-            config.diagnostics.nx = diagnostics["nx"].int_or(0);
-            config.diagnostics.ny = diagnostics["ny"].int_or(0);
-            if (diagnostics["variables"]) config.diagnostics.variables = diagnostics["variables"].as_string_list();
-        }
-    }
-
     conf::Value vertical = root["vertical_grid"];
     if (vertical && vertical.is_defined()) {
         std::string type = string_or(vertical, "type");
@@ -236,6 +222,52 @@ CeceConfig ParseConfig(const std::string& filename) {
             config.driver_config.amio_staging_buffer_count = count;
         }
     }
+    conf::Value diagnostics = root["diagnostics"];
+    if (diagnostics) {
+        if (diagnostics.kind() == conf::Node_Kind::Sequence) {
+            config.diagnostics.variables = diagnostics.as_string_list();
+        } else {
+            // Primary key plus the deprecated alias; when both are present
+            // output_interval_seconds wins (contract: diagnostics-config §1).
+            const bool has_seconds_key = diagnostics["output_interval_seconds"].is_defined();
+            if (has_seconds_key) {
+                config.diagnostics.output_interval_seconds = diagnostics["output_interval_seconds"].as_int();
+            } else {
+                config.diagnostics.output_interval_seconds = diagnostics["output_interval"].int_or(0);
+            }
+            config.diagnostics.grid_type = string_or(diagnostics, "grid_type", config.diagnostics.grid_type);
+            config.diagnostics.grid_file = string_or(diagnostics, "grid_file");
+            config.diagnostics.nx = diagnostics["nx"].int_or(0);
+            config.diagnostics.ny = diagnostics["ny"].int_or(0);
+            if (diagnostics["variables"]) config.diagnostics.variables = diagnostics["variables"].as_string_list();
+        }
+    }
+
+    // Validation of the diagnostics surface (contract: diagnostics-config §3,
+    // V1-V4). Only runs when the channel is live: a dormant block stays
+    // inert so existing example configs keep loading unchanged (SC-005).
+    // Placed after both blocks so driver.timestep_seconds is always known
+    // regardless of document order (research R5).
+    if (config.output_config.include_diagnostics) {
+        const int interval = config.diagnostics.output_interval_seconds;
+        if (interval < 0) {
+            throw std::invalid_argument("diagnostics.output_interval_seconds must be >= 0; got " + std::to_string(interval) + ".");
+        }
+        const int timestep = config.driver_config.timestep_seconds;
+        if (interval > 0 && interval % timestep != 0) {
+            throw std::invalid_argument("diagnostics.output_interval_seconds (" + std::to_string(interval) +
+                                        ") must be a multiple of driver.timestep_seconds (" + std::to_string(timestep) + ").");
+        }
+        for (const auto& name : config.diagnostics.variables) {
+            if (IsWriterManagedName(name)) {
+                throw std::invalid_argument("diagnostics:variables entry '" + name + "' collides with a reserved coordinate variable name.");
+            }
+            if (config.species_layers.contains(name)) {
+                throw std::invalid_argument("diagnostics:variables entry '" + name + "' collides with a declared species name.");
+            }
+        }
+    }
+
     config.output_config.fields.SetTimeUnits(config.driver_config.start_time);
     return config;
 }
