@@ -724,6 +724,53 @@ if(ESMF_FOUND)
   if(CECE_HAS_FORTRAN)
     add_subdirectory(nuopc_coupling)
   endif()
+
+  # Diagnostics-through-the-cap integration test (feature 003, US3 / T023).
+  # Hosts the production CECE cap under a minimal NUOPC_Driver, runs
+  # Initialize + one Advance against real ESMF, and asserts the advertised
+  # channel's Units/LongName and that the ESMF buffer equals the registry's
+  # host view for the same step. Links cece_nuopc_cap (production cap + cece +
+  # ESMF transitively), mirroring the coupling harness's link line.
+  #
+  # Two CTest cases, one process each: cece_core_finalize tears Kokkos down
+  # when CECE initialized it, and Kokkos cannot be re-initialized after
+  # finalization in one process, so the "values" and "optout" scenarios cannot
+  # share an executable run. Each passes its mode + rendered fixture.
+  if(CECE_HAS_FORTRAN)
+    add_executable(test_diagnostics_coupled test_diagnostics_coupled.F90)
+    set_target_properties(test_diagnostics_coupled PROPERTIES LINKER_LANGUAGE Fortran)
+    target_include_directories(
+      test_diagnostics_coupled
+      PRIVATE ${ESMF_INCLUDE_DIRS} ${CMAKE_BINARY_DIR}/modules
+    )
+    target_link_libraries(
+      test_diagnostics_coupled
+      PRIVATE cece_nuopc_cap cece ESMF::ESMF ${ESMF_LIBRARIES}
+    )
+    if(TARGET MPI::MPI_Fortran)
+      target_link_libraries(test_diagnostics_coupled PRIVATE MPI::MPI_Fortran)
+    endif()
+
+    foreach(_diag_case values optout)
+      add_test(
+        NAME test_diagnostics_coupled_${_diag_case}
+        COMMAND
+          ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 $<TARGET_FILE:test_diagnostics_coupled>
+          ${_diag_case} ${CMAKE_CURRENT_SOURCE_DIR}/diag_coupled_${_diag_case}.yaml
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+      )
+      set_tests_properties(
+        test_diagnostics_coupled_${_diag_case}
+        PROPERTIES
+          ENVIRONMENT
+            "FI_PROVIDER=tcp;I_MPI_FABRICS=shm;OMPI_ALLOW_RUN_AS_ROOT=1;OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1"
+          TIMEOUT 300
+          LABELS np1
+          PROCESSORS 1
+          RESOURCE_LOCK cece_config_yaml
+      )
+    endforeach()
+  endif()
 endif()
 
 # --- Drivers and benchmarks (not gtest) --------------------------------------

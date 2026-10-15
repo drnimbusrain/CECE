@@ -91,6 +91,13 @@ class CeceDiagnosticManager {
         return fields_;
     }
 
+    /// @brief Read-only view of pending declarations (name -> metadata), i.e.
+    /// those declared before SetGrid promoted them. The C-ABI enumeration
+    /// reports metadata for pending names through this view.
+    const std::unordered_map<std::string, DiagnosticDeclaration>& PendingDeclarations() const {
+        return pending_;
+    }
+
     /// @brief Names of allocated fields in stable first-seen order (cap/manifest).
     const std::vector<std::string>& Order() const {
         return order_;
@@ -140,5 +147,58 @@ class CeceDiagnosticManager {
 };
 
 }  // namespace cece
+
+/* C-ABI surface consumed by the NUOPC cap (feature 003, contracts/diagnostics-c-api.md).
+ * All entry points take the opaque cece_core_* data handle (a cece::CeceInternalData*)
+ * and report through int* rc (0 = success, -1 = error with a logged message),
+ * matching the existing cece_core_* convention. Strings are written
+ * NUL-terminated into caller-owned buffers and are never silently truncated:
+ * a buffer too small is an error. Definitions live in
+ * src/core/cece_diagnostic_api.cpp. */
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/**
+ * @brief Count the diagnostics the registry will enumerate (pending + allocated,
+ * deduped, stable first-seen order). Valid once the core data exists.
+ */
+void cece_core_diagnostic_count(void* data_ptr, int* count, int* rc);
+
+/** @brief Write the diagnostic name at @p index (0-based) into @p name. */
+void cece_core_diagnostic_name(void* data_ptr, int index, char* name, int max_len, int* rc);
+
+/** @brief Write the diagnostic units at @p index into @p units (empty string if unset). */
+void cece_core_diagnostic_units(void* data_ptr, int index, char* units, int max_len, int* rc);
+
+/** @brief Write the diagnostic long name at @p index into @p long_name (empty string if unset). */
+void cece_core_diagnostic_long_name(void* data_ptr, int index, char* long_name, int max_len, int* rc);
+
+/**
+ * @brief Register a caller-owned buffer as the persistent write-back target
+ * for the named diagnostic (cap Realize). The name must already be a
+ * registered or pending diagnostic and the extents must match the core grid;
+ * re-registering a name overwrites the previous pointer. The core never
+ * frees the buffer (ESMF owns the memory).
+ */
+void cece_core_set_diagnostic_field(void* data_ptr, const char* name, int name_len, double* field_data, int nx, int ny, int nz, int* rc);
+
+/**
+ * @brief Count the diagnostics the NUOPC cap should advertise, enumerated
+ * from the config YAML at @p config_path (path_len bytes). Valid before any
+ * simulation exists; a disabled or empty selection yields zero.
+ */
+void cece_nuopc_diagnostic_count(const char* config_path, int path_len, int* count, int* rc);
+
+/**
+ * @brief Write the index-th advertised diagnostic name (0-based, config
+ * order) into @p name. Same selection rules as cece_nuopc_diagnostic_count.
+ * @p name_len_out receives the length excluding the NUL terminator.
+ */
+void cece_nuopc_diagnostic_name(const char* config_path, int path_len, int index, char* name, int max_len, int* name_len_out, int* rc);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif  // CECE_DIAGNOSTICS_HPP

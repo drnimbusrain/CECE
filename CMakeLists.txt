@@ -480,6 +480,7 @@ set(
   src/core/physics/cece_bdsnp.cpp
   src/core/cece_data_ingestor.cpp
   src/core/cece_diagnostic_manager.cpp
+  src/core/cece_diagnostic_api.cpp
   src/core/cece_io.cpp
   src/core/cece_core_driver_config.cpp
   src/core/cece_core_realize.cpp

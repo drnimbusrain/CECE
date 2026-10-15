@@ -29,6 +29,7 @@
 
 #include "cece/cece_data_ingestor.hpp"
 #include "cece/cece_internal.hpp"
+#include "cece/cece_logger.hpp"
 
 extern "C" {
 
@@ -177,8 +178,8 @@ void cece_core_initialize_p2(void* data_ptr, int* nx, int* ny, int* nz, int* rc)
     // re-registers each scheme's diagnostics into the now-bound manager so the
     // scheme members hold grid-sized views instead of the empty P1 handles.
     if (internal_data->diagnostic_manager != nullptr) {
-        std::cout << "INFO: Binding diagnostic manager into " << internal_data->active_schemes.size() << " schemes at grid " << internal_data->nx
-                  << "x" << internal_data->ny << "x" << internal_data->nz << std::endl;
+        CECE_LOG_INFO("[CECE] Binding diagnostic manager into " + std::to_string(internal_data->active_schemes.size()) + " schemes at grid " +
+                      std::to_string(internal_data->nx) + "x" + std::to_string(internal_data->ny) + "x" + std::to_string(internal_data->nz));
 
         internal_data->diagnostic_manager->SetGrid(internal_data->nx, internal_data->ny, internal_data->nz);
 
@@ -194,16 +195,16 @@ void cece_core_initialize_p2(void* data_ptr, int* nx, int* ny, int* nz, int* rc)
                 internal_data->active_schemes[i]->Initialize(internal_data->config.physics_schemes[i].options,
                                                              internal_data->diagnostic_manager.get());
             } catch (const std::exception& e) {
-                std::cerr << "ERROR in cece_core_initialize_p2: Failed to re-initialize scheme '" << internal_data->config.physics_schemes[i].name
-                          << "' with the diagnostic manager: " << e.what() << std::endl;
+                CECE_LOG_ERROR("[CECE] cece_core_initialize_p2: Failed to re-initialize scheme '" + internal_data->config.physics_schemes[i].name +
+                               "' with the diagnostic manager: " + e.what());
                 if (rc != nullptr) {
                     *rc = -1;
                 }
                 return;
             }
         }
-        std::cout << "INFO: Diagnostic manager bound; " << internal_data->diagnostic_manager->Fields().size() << " diagnostic field(s) registered"
-                  << std::endl;
+        CECE_LOG_INFO("[CECE] Diagnostic manager bound; " + std::to_string(internal_data->diagnostic_manager->Fields().size()) +
+                      " diagnostic field(s) registered");
     }
 
     std::cout << "INFO: CECE Initialize Phase 2 completed successfully" << std::endl;
