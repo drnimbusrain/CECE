@@ -44,13 +44,13 @@ choose and validate roughness and release thresholds for each taxon/domain.
 
 Both RH and precipitation use the same bounded linear suppression:
 
-```math
-f(x;l,h)=\begin{cases}
-1,&x\le l,\\
-(h-x)/(h-l),&l<x<h,\\
-0,&x\ge h.
-\end{cases}
-```
+$$f(x;l,h)=\max\left(0,\min\left(1,\frac{h-x}{h-l}\right)\right),\qquad l<h.$$
+
+The factor is 1 at or below the low threshold $l$, decreases linearly as
+$(h-x)/(h-l)$ between the thresholds, and is 0 at or above the high threshold
+$h$. For RH, use $x=RH$ with `rh_low_percent` and `rh_high_percent`; for
+precipitation, use $x=P$ with `precipitation_low_mm_h` and
+`precipitation_high_mm_h`.
 
 Precipitation is a **rate in mm h-1**, independent of `dt`. Convert a host rate
 in kg m-2 s-1 (equivalently mm s-1) by multiplying by 3600. If the host
