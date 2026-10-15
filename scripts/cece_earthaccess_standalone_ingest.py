@@ -462,6 +462,28 @@ def _is_transient_remote_error(exc: BaseException) -> bool:
     return False
 
 
+def _wind_speed(
+    dataset: Any,
+    specification: Any,
+    timestamp: np.datetime64,
+    target_lons: np.ndarray,
+    target_lats: np.ndarray,
+) -> np.ndarray:
+    if not isinstance(specification, dict):
+        raise TypeError("wind_speed derived variable requires a mapping")
+    components = []
+    for component, default in (("u", "U10M"), ("v", "V10M")):
+        nasa_var = specification.get(component, default)
+        if nasa_var not in dataset:
+            raise KeyError(f"Variable {nasa_var!r} required for wind_speed is missing")
+        selected = _select_time(dataset[nasa_var], timestamp)
+        components.append(_interp_to_target(selected, target_lons, target_lats))
+    values = np.hypot(*components)
+    if not np.isfinite(values).all():
+        raise ValueError("wind_speed derived variable contains nonfinite values")
+    return values
+
+
 def _read_stream(
     stream: dict,
     download_dir: Path | None,
@@ -513,6 +535,10 @@ def _read_stream(
             elif method == "sunshine_hours":
                 values = _sunshine_hours(
                     timestamp_datetime, target_lats, target_lons.size
+                )
+            elif method == "wind_speed":
+                values = _wind_speed(
+                    dataset, specification, timestamp, target_lons, target_lats
                 )
             elif method == "relative_humidity":
                 if not isinstance(specification, dict):

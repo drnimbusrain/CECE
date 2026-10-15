@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Train an annual pollen-production RF and map it to a CECE grid."""
+"""Legacy Li annual-production RF preparation (not an inline pollen input).
+
+Use prepare_pollen_lur.py for the current base_pollen_potential contract.
+"""
 
 from __future__ import annotations
 

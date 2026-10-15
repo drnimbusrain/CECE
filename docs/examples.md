@@ -14,8 +14,9 @@ The `examples/` directory contains several YAML configuration files:
 -   `cece_config_ex6.yaml`: Handling non-separated inventories
 -   `cece_config_advanced.yaml`: **NEW** - Comprehensive example demonstrating advanced Stacking Engine features
 -   `cece_config_earthaccess.yaml`: Cloud-native NASA Earthdata streaming with `earthaccess`
--   `cece_config_earthaccess_pollen.yaml`: RF pollen climatology with online Earthaccess MERRA-2 meteorology
--   `cece_config_earthaccess_pollen_total.yaml`: Total (aggregate) pollen only, summed from Ambee's grass/tree/weed group counts
+-   `cece_config_pollen.yaml`: Free synthetic inline base-potential and meteorology demonstration
+-   `cece_config_earthaccess_pollen.yaml`: Pollen Sense LUR base potential with online Earthaccess MERRA-2 meteorology
+-   `cece_config_earthaccess_pollen_total.yaml`: Independently calibrated aggregate total-pollen potential
 -   `cece_config_earthaccess_pollen_all_taxa.yaml`: All built-in pollen taxon aliases with shared Earthaccess MERRA-2 meteorology
 -   `cece_config_localtime.yaml`: **NEW** - Local-time temporal scaling: a diurnal
     cycle evaluated at each cell's local time (identity profile `hour_id` makes
@@ -49,11 +50,15 @@ For complete technical details about how these features work, see the [Stacking 
 | ex6 | (varies) | Multiple | Non-separated inventory handling |
 | **advanced** | **144×91** | **CO, NOx, Isoprene** | **All advanced features demonstrated** |
 | earthaccess | HEMCO 4×5 | Isoprene, soil NO, dust | NASA Earthdata cloud streams via `earthaccess` |
-| earthaccess pollen | MERRA-2 0.625°×0.5° | Mugwort pollen | Annual RF source climatology plus online MERRA-2 release meteorology |
-| earthaccess pollen total | MERRA-2 0.625°×0.5° | Total (aggregate) pollen | Aggregate RF climatology summed from provider group counts, plus shared online meteorology |
-| earthaccess pollen all taxa | MERRA-2 0.625°×0.5° | 18 taxa + total pollen | Consolidated taxon RF/phenology file plus shared online meteorology |
+| pollen | 30×25 | Artemisia, chenopod, total | Freely generated base potentials and hourly weather |
+| earthaccess pollen | MERRA-2 0.625°×0.5° | Mugwort pollen | LUR base flux plus online T/RH/U10/rain scaling |
+| earthaccess pollen total | MERRA-2 0.625°×0.5° | Total (aggregate) pollen | Aggregate base flux plus online meteorology |
+| earthaccess pollen all taxa | MERRA-2 0.625°×0.5° | 18 taxa + total pollen | Consolidated taxon base-potential file plus online meteorology |
 
-Ambee-derived pollen inputs are not bundled or automatically licensed by these examples. Before retrieving or using Ambee data, confirm that your account-specific terms authorize the planned requests, storage, model training, and any sharing of outputs; see the usage authorization note in [Pollen Emissions](pollen.md).
+Pollen Sense observations are not bundled or automatically licensed. Confirm rights
+for export, storage, training and sharing. Free synthetic alternatives and the
+station-to-grid calibration workflow are in [Pollen LUR](pollen_lur.md); the
+online physics and migration contract are in [Pollen Emissions](pollen.md).
 
 ---
 

@@ -13,6 +13,8 @@ nav = [
     { "Tutorial" = "tutorial.md" },
     { "Scripts & Utilities" = "scripts.md" },
     { "Examples" = "examples.md" },
+    { "Inline Pollen" = "pollen.md" },
+    { "Pollen Station-to-Grid LUR" = "pollen_lur.md" },
     { "Migration Examples" = "migration_examples.md" },
     { "API Reference" = "api.md" }
 ]

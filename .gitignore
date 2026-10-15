@@ -5,6 +5,7 @@ build*/
 cece_output/
 output/
 *.nc
+data/pollen/lur_demo/
 
 # Log files
 *.ESMF_LogFile

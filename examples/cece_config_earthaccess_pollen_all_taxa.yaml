@@ -1,24 +1,20 @@
 # =====================================================================
 # CECE Pollen Example: All Built-in Taxa + Earthaccess MERRA-2
 # =====================================================================
-# Ambee-derived inputs require account-specific rights for retrieval, storage,
-# training, and output use; see the authorization note in docs/pollen.md.
+# Licensed Pollen Sense LUR potentials or free synthetic equivalents;
+# see docs/pollen_lur.md. These are not bundled proprietary observations.
 # This configuration instantiates every distinct built-in taxon alias.
 # pollen_artemisia is a synonym of pollen_mugwort and is intentionally not
 # instantiated concurrently. pollen_total is an aggregate tracer and should
 # not be summed with the individual taxa.
 #
-# Required climatology:
-#   data/pollen/annual_pollen_production_all_taxa_2025.nc
+# Required static potential:
+#   data/pollen/base_pollen_potential_all_taxa_2025.nc
 # with a singleton 2025 time coordinate and, for each TAXON below:
-#   TAXON_pannual [grains m-2 yr-1], TAXON_sdoy, TAXON_edoy
+#   TAXON_base [grains m-2 s-1], per total grid-cell area
 #
-# Train and include only taxa your observation provider actually supports at
-# your sites (docs/pollen.md); remove unsupported taxa rather than filling
-# missing climatologies with zero. Ambee's cypress groups vary by region:
-# Cypress, Cypress/Juniper/Cedar, and Cypress/Yew. Do not train both
-# pollen_cypress and pollen_juniper from the same combined
-# Species.Tree.Cypress/Juniper/Cedar count.
+# Train only taxa actually supported at your stations; never fill missing
+# observations with zero or split a grouped measurement into duplicate taxa.
 #
 # Particle diameter and density defaults are placeholders in this broad
 # example. Configure taxon-specific measured values for scientific production.
@@ -82,203 +78,147 @@ species:
   POLLEN_TOTAL_MASS: []
 
 # Shared canonical meteorology names are provided by the Earthaccess streams.
-# Each taxon maps only its climatology and unique outputs.
+# Each taxon maps only its base potential and unique outputs.
+# Omitting refresh_interval_seconds executes the scheme at every base dt.
 physics_schemes:
   - name: pollen_mugwort
     options:
-      vegetation_fraction_default: 1.0
       input_mapping:
-        annual_pollen_production: MUGWORT_PANNUAL
-        season_start_doy: MUGWORT_SDOY
-        season_end_doy: MUGWORT_EDOY
+        base_pollen_potential: MUGWORT_BASE
       output_mapping:
         pollen_number_emissions: POLLEN_MUGWORT_NUM
         pollen_mass_emissions: POLLEN_MUGWORT_MASS
   - name: pollen_chenopod
     options:
-      vegetation_fraction_default: 1.0
       input_mapping:
-        annual_pollen_production: CHENOPOD_PANNUAL
-        season_start_doy: CHENOPOD_SDOY
-        season_end_doy: CHENOPOD_EDOY
+        base_pollen_potential: CHENOPOD_BASE
       output_mapping:
         pollen_number_emissions: POLLEN_CHENOPOD_NUM
         pollen_mass_emissions: POLLEN_CHENOPOD_MASS
   - name: pollen_ragweed
     options:
-      vegetation_fraction_default: 1.0
       input_mapping:
-        annual_pollen_production: RAGWEED_PANNUAL
-        season_start_doy: RAGWEED_SDOY
-        season_end_doy: RAGWEED_EDOY
+        base_pollen_potential: RAGWEED_BASE
       output_mapping:
         pollen_number_emissions: POLLEN_RAGWEED_NUM
         pollen_mass_emissions: POLLEN_RAGWEED_MASS
   - name: pollen_grass
     options:
-      vegetation_fraction_default: 1.0
       input_mapping:
-        annual_pollen_production: GRASS_PANNUAL
-        season_start_doy: GRASS_SDOY
-        season_end_doy: GRASS_EDOY
+        base_pollen_potential: GRASS_BASE
       output_mapping:
         pollen_number_emissions: POLLEN_GRASS_NUM
         pollen_mass_emissions: POLLEN_GRASS_MASS
   - name: pollen_alder
     options:
-      vegetation_fraction_default: 1.0
       input_mapping:
-        annual_pollen_production: ALDER_PANNUAL
-        season_start_doy: ALDER_SDOY
-        season_end_doy: ALDER_EDOY
+        base_pollen_potential: ALDER_BASE
       output_mapping:
         pollen_number_emissions: POLLEN_ALDER_NUM
         pollen_mass_emissions: POLLEN_ALDER_MASS
   - name: pollen_ash
     options:
-      vegetation_fraction_default: 1.0
       input_mapping:
-        annual_pollen_production: ASH_PANNUAL
-        season_start_doy: ASH_SDOY
-        season_end_doy: ASH_EDOY
+        base_pollen_potential: ASH_BASE
       output_mapping:
         pollen_number_emissions: POLLEN_ASH_NUM
         pollen_mass_emissions: POLLEN_ASH_MASS
   - name: pollen_birch
     options:
-      vegetation_fraction_default: 1.0
       input_mapping:
-        annual_pollen_production: BIRCH_PANNUAL
-        season_start_doy: BIRCH_SDOY
-        season_end_doy: BIRCH_EDOY
+        base_pollen_potential: BIRCH_BASE
       output_mapping:
         pollen_number_emissions: POLLEN_BIRCH_NUM
         pollen_mass_emissions: POLLEN_BIRCH_MASS
   - name: pollen_cottonwood
     options:
-      vegetation_fraction_default: 1.0
       input_mapping:
-        annual_pollen_production: COTTONWOOD_PANNUAL
-        season_start_doy: COTTONWOOD_SDOY
-        season_end_doy: COTTONWOOD_EDOY
+        base_pollen_potential: COTTONWOOD_BASE
       output_mapping:
         pollen_number_emissions: POLLEN_COTTONWOOD_NUM
         pollen_mass_emissions: POLLEN_COTTONWOOD_MASS
   - name: pollen_cypress
     options:
-      vegetation_fraction_default: 1.0
       input_mapping:
-        annual_pollen_production: CYPRESS_PANNUAL
-        season_start_doy: CYPRESS_SDOY
-        season_end_doy: CYPRESS_EDOY
+        base_pollen_potential: CYPRESS_BASE
       output_mapping:
         pollen_number_emissions: POLLEN_CYPRESS_NUM
         pollen_mass_emissions: POLLEN_CYPRESS_MASS
   - name: pollen_elm
     options:
-      vegetation_fraction_default: 1.0
       input_mapping:
-        annual_pollen_production: ELM_PANNUAL
-        season_start_doy: ELM_SDOY
-        season_end_doy: ELM_EDOY
+        base_pollen_potential: ELM_BASE
       output_mapping:
         pollen_number_emissions: POLLEN_ELM_NUM
         pollen_mass_emissions: POLLEN_ELM_MASS
   - name: pollen_hazel
     options:
-      vegetation_fraction_default: 1.0
       input_mapping:
-        annual_pollen_production: HAZEL_PANNUAL
-        season_start_doy: HAZEL_SDOY
-        season_end_doy: HAZEL_EDOY
+        base_pollen_potential: HAZEL_BASE
       output_mapping:
         pollen_number_emissions: POLLEN_HAZEL_NUM
         pollen_mass_emissions: POLLEN_HAZEL_MASS
   - name: pollen_juniper
     options:
-      vegetation_fraction_default: 1.0
       input_mapping:
-        annual_pollen_production: JUNIPER_PANNUAL
-        season_start_doy: JUNIPER_SDOY
-        season_end_doy: JUNIPER_EDOY
+        base_pollen_potential: JUNIPER_BASE
       output_mapping:
         pollen_number_emissions: POLLEN_JUNIPER_NUM
         pollen_mass_emissions: POLLEN_JUNIPER_MASS
   - name: pollen_maple
     options:
-      vegetation_fraction_default: 1.0
       input_mapping:
-        annual_pollen_production: MAPLE_PANNUAL
-        season_start_doy: MAPLE_SDOY
-        season_end_doy: MAPLE_EDOY
+        base_pollen_potential: MAPLE_BASE
       output_mapping:
         pollen_number_emissions: POLLEN_MAPLE_NUM
         pollen_mass_emissions: POLLEN_MAPLE_MASS
   - name: pollen_oak
     options:
-      vegetation_fraction_default: 1.0
       input_mapping:
-        annual_pollen_production: OAK_PANNUAL
-        season_start_doy: OAK_SDOY
-        season_end_doy: OAK_EDOY
+        base_pollen_potential: OAK_BASE
       output_mapping:
         pollen_number_emissions: POLLEN_OAK_NUM
         pollen_mass_emissions: POLLEN_OAK_MASS
   - name: pollen_olive
     options:
-      vegetation_fraction_default: 1.0
       input_mapping:
-        annual_pollen_production: OLIVE_PANNUAL
-        season_start_doy: OLIVE_SDOY
-        season_end_doy: OLIVE_EDOY
+        base_pollen_potential: OLIVE_BASE
       output_mapping:
         pollen_number_emissions: POLLEN_OLIVE_NUM
         pollen_mass_emissions: POLLEN_OLIVE_MASS
   - name: pollen_pine
     options:
-      vegetation_fraction_default: 1.0
       input_mapping:
-        annual_pollen_production: PINE_PANNUAL
-        season_start_doy: PINE_SDOY
-        season_end_doy: PINE_EDOY
+        base_pollen_potential: PINE_BASE
       output_mapping:
         pollen_number_emissions: POLLEN_PINE_NUM
         pollen_mass_emissions: POLLEN_PINE_MASS
   - name: pollen_plane
     options:
-      vegetation_fraction_default: 1.0
       input_mapping:
-        annual_pollen_production: PLANE_PANNUAL
-        season_start_doy: PLANE_SDOY
-        season_end_doy: PLANE_EDOY
+        base_pollen_potential: PLANE_BASE
       output_mapping:
         pollen_number_emissions: POLLEN_PLANE_NUM
         pollen_mass_emissions: POLLEN_PLANE_MASS
   - name: pollen_nettle
     options:
-      vegetation_fraction_default: 1.0
       input_mapping:
-        annual_pollen_production: NETTLE_PANNUAL
-        season_start_doy: NETTLE_SDOY
-        season_end_doy: NETTLE_EDOY
+        base_pollen_potential: NETTLE_BASE
       output_mapping:
         pollen_number_emissions: POLLEN_NETTLE_NUM
         pollen_mass_emissions: POLLEN_NETTLE_MASS
   - name: pollen_total
     options:
-      vegetation_fraction_default: 1.0
       input_mapping:
-        annual_pollen_production: TOTAL_PANNUAL
-        season_start_doy: TOTAL_SDOY
-        season_end_doy: TOTAL_EDOY
+        base_pollen_potential: TOTAL_BASE
       output_mapping:
         pollen_number_emissions: POLLEN_TOTAL_NUM
         pollen_mass_emissions: POLLEN_TOTAL_MASS
 
 cece_data:
   streams:
-    - name: POLLEN_ALL_TAXA_RF_CLIMATOLOGY_2025
-      file: "data/pollen/annual_pollen_production_all_taxa_2025.nc"
+    - name: POLLEN_ALL_TAXA_LUR_POTENTIAL_2025
+      file: "data/pollen/base_pollen_potential_all_taxa_2025.nc"
       yearFirst: 2025
       yearLast: 2025
       yearAlign: 2025
@@ -286,63 +226,25 @@ cece_data:
       tintalgo: nearest
       mapalgo: bilinear
       variables:
-        - { file: mugwort_pannual, model: MUGWORT_PANNUAL }
-        - { file: mugwort_sdoy, model: MUGWORT_SDOY }
-        - { file: mugwort_edoy, model: MUGWORT_EDOY }
-        - { file: chenopod_pannual, model: CHENOPOD_PANNUAL }
-        - { file: chenopod_sdoy, model: CHENOPOD_SDOY }
-        - { file: chenopod_edoy, model: CHENOPOD_EDOY }
-        - { file: ragweed_pannual, model: RAGWEED_PANNUAL }
-        - { file: ragweed_sdoy, model: RAGWEED_SDOY }
-        - { file: ragweed_edoy, model: RAGWEED_EDOY }
-        - { file: grass_pannual, model: GRASS_PANNUAL }
-        - { file: grass_sdoy, model: GRASS_SDOY }
-        - { file: grass_edoy, model: GRASS_EDOY }
-        - { file: alder_pannual, model: ALDER_PANNUAL }
-        - { file: alder_sdoy, model: ALDER_SDOY }
-        - { file: alder_edoy, model: ALDER_EDOY }
-        - { file: ash_pannual, model: ASH_PANNUAL }
-        - { file: ash_sdoy, model: ASH_SDOY }
-        - { file: ash_edoy, model: ASH_EDOY }
-        - { file: birch_pannual, model: BIRCH_PANNUAL }
-        - { file: birch_sdoy, model: BIRCH_SDOY }
-        - { file: birch_edoy, model: BIRCH_EDOY }
-        - { file: cottonwood_pannual, model: COTTONWOOD_PANNUAL }
-        - { file: cottonwood_sdoy, model: COTTONWOOD_SDOY }
-        - { file: cottonwood_edoy, model: COTTONWOOD_EDOY }
-        - { file: cypress_pannual, model: CYPRESS_PANNUAL }
-        - { file: cypress_sdoy, model: CYPRESS_SDOY }
-        - { file: cypress_edoy, model: CYPRESS_EDOY }
-        - { file: elm_pannual, model: ELM_PANNUAL }
-        - { file: elm_sdoy, model: ELM_SDOY }
-        - { file: elm_edoy, model: ELM_EDOY }
-        - { file: hazel_pannual, model: HAZEL_PANNUAL }
-        - { file: hazel_sdoy, model: HAZEL_SDOY }
-        - { file: hazel_edoy, model: HAZEL_EDOY }
-        - { file: juniper_pannual, model: JUNIPER_PANNUAL }
-        - { file: juniper_sdoy, model: JUNIPER_SDOY }
-        - { file: juniper_edoy, model: JUNIPER_EDOY }
-        - { file: maple_pannual, model: MAPLE_PANNUAL }
-        - { file: maple_sdoy, model: MAPLE_SDOY }
-        - { file: maple_edoy, model: MAPLE_EDOY }
-        - { file: oak_pannual, model: OAK_PANNUAL }
-        - { file: oak_sdoy, model: OAK_SDOY }
-        - { file: oak_edoy, model: OAK_EDOY }
-        - { file: olive_pannual, model: OLIVE_PANNUAL }
-        - { file: olive_sdoy, model: OLIVE_SDOY }
-        - { file: olive_edoy, model: OLIVE_EDOY }
-        - { file: pine_pannual, model: PINE_PANNUAL }
-        - { file: pine_sdoy, model: PINE_SDOY }
-        - { file: pine_edoy, model: PINE_EDOY }
-        - { file: plane_pannual, model: PLANE_PANNUAL }
-        - { file: plane_sdoy, model: PLANE_SDOY }
-        - { file: plane_edoy, model: PLANE_EDOY }
-        - { file: nettle_pannual, model: NETTLE_PANNUAL }
-        - { file: nettle_sdoy, model: NETTLE_SDOY }
-        - { file: nettle_edoy, model: NETTLE_EDOY }
-        - { file: total_pannual, model: TOTAL_PANNUAL }
-        - { file: total_sdoy, model: TOTAL_SDOY }
-        - { file: total_edoy, model: TOTAL_EDOY }
+        - { file: mugwort_base, model: MUGWORT_BASE }
+        - { file: chenopod_base, model: CHENOPOD_BASE }
+        - { file: ragweed_base, model: RAGWEED_BASE }
+        - { file: grass_base, model: GRASS_BASE }
+        - { file: alder_base, model: ALDER_BASE }
+        - { file: ash_base, model: ASH_BASE }
+        - { file: birch_base, model: BIRCH_BASE }
+        - { file: cottonwood_base, model: COTTONWOOD_BASE }
+        - { file: cypress_base, model: CYPRESS_BASE }
+        - { file: elm_base, model: ELM_BASE }
+        - { file: hazel_base, model: HAZEL_BASE }
+        - { file: juniper_base, model: JUNIPER_BASE }
+        - { file: maple_base, model: MAPLE_BASE }
+        - { file: oak_base, model: OAK_BASE }
+        - { file: olive_base, model: OLIVE_BASE }
+        - { file: pine_base, model: PINE_BASE }
+        - { file: plane_base, model: PLANE_BASE }
+        - { file: nettle_base, model: NETTLE_BASE }
+        - { file: total_base, model: TOTAL_BASE }
 
     - name: MERRA2_POLLEN_STATE
       source: earthaccess
@@ -356,9 +258,10 @@ cece_data:
         T2M: temperature
         QV2M: MERRA2_QV2M
         PS: MERRA2_PS
+        U10M: MERRA2_U10M
+        V10M: MERRA2_V10M
       derived_variables:
-        day_of_year: day_of_year
-        sunshine_hours: sunshine_hours
+        wind_speed: { method: wind_speed, u: U10M, v: V10M }
         relative_humidity:
           method: relative_humidity
           temperature: T2M
@@ -374,10 +277,9 @@ cece_data:
       temporal_start: "2025-08-25"
       temporal_end: "2025-08-27"
       variables:
-        SPEED: wind_speed
-        USTAR: convective_velocity
         PRECTOTCORR:
-          model: precipitation
+          model: precipitation_rate
+          # mm s-1 -> mm h-1 rate, independent of the model timestep.
           scale: 3600.0
 
 output:

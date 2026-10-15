@@ -4,6 +4,20 @@ CECE provides several Python scripts to facilitate data management, configuratio
 
 ## Data Management
 
+### Pollen base-potential preparation
+
+`tools/prepare_pollen_lur.py` fits a station-group-evaluated land-use regression
+from licensed Pollen Sense concentration exports and co-registered land-cover,
+NDVI and canopy-height predictors. It includes optional Earthaccess acquisition
+and free synthetic fixtures. The concentration-to-flux calibration is explicit;
+this is not a transport inversion. See [Pollen LUR](pollen_lur.md).
+
+`tools/generate_pollen_example_stream.py` generates the offline inline pollen
+example's arbitrary base potentials and time-varying weather. No credentials
+are needed. The former `prepare_global_pollen_rf.py` and `train_pollen_rf.py`
+are legacy annual-production utilities, not input generators for the current
+native scheme. See [Inline Pollen](pollen.md) for migration and units.
+
 ### `download_hemco_data.py`
 Downloads required emission inventories from the public GEOS-Chem S3 bucket.
 ```bash

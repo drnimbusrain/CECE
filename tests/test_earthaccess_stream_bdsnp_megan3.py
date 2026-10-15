@@ -1017,6 +1017,26 @@ class TestStandaloneEarthAccessIngestHelper:
 
         dataset.close.assert_called_once_with()
 
+    @pytest.mark.parametrize("specification", ["wind_speed", {}])
+    def test_helper_wind_speed_rejects_invalid_or_missing_sources(self, specification):
+        with pytest.raises((TypeError, KeyError)):
+            _standalone_ingest_mod._wind_speed(
+                xr.Dataset(), specification, np.datetime64("2025-08-25"), LON, LAT
+            )
+
+    def test_helper_wind_speed_rejects_nonfinite_components(self):
+        dataset = xr.Dataset(
+            {
+                "U10M": (("lat", "lon"), np.full((NY, NX), np.nan)),
+                "V10M": (("lat", "lon"), np.full((NY, NX), 4.0)),
+            },
+            coords={"lat": LAT, "lon": LON},
+        )
+        with pytest.raises(ValueError, match="nonfinite"):
+            _standalone_ingest_mod._wind_speed(
+                dataset, {"method": "wind_speed"}, np.datetime64("2025-08-25"), LON, LAT
+            )
+
     def test_helper_builds_pollen_meteorology_fields(self, tmp_path):
         timestamp = np.datetime64("2025-08-25T12:00:00")
         coordinates = {"time": [timestamp], "lat": LAT, "lon": LON}
@@ -1027,6 +1047,8 @@ class TestStandaloneEarthAccessIngestHelper:
                 "QV2M": (("time", "lat", "lon"), np.full(shape, 0.0073)),
                 "PS": (("time", "lat", "lon"), np.full(shape, 101325.0)),
                 "PRECTOTCORR": (("time", "lat", "lon"), np.full(shape, 1.0e-4)),
+                "U10M": (("time", "lat", "lon"), np.full(shape, 3.0)),
+                "V10M": (("time", "lat", "lon"), np.full(shape, 4.0)),
             },
             coords=coordinates,
         )
@@ -1041,13 +1063,14 @@ class TestStandaloneEarthAccessIngestHelper:
             "variables": {
                 "T2M": "MERRA2_T2M",
                 "PRECTOTCORR": {
-                    "model": "MERRA2_PRECIP_MM_INTERVAL",
+                    "model": "MERRA2_PRECIP_MM_H",
                     "scale": 3600.0,
                 },
             },
             "derived_variables": {
                 "DAY_OF_YEAR": "day_of_year",
                 "SUNSHINE_HOURS": "sunshine_hours",
+                "U10": {"method": "wind_speed", "u": "U10M", "v": "V10M"},
                 "MERRA2_RH2M": {
                     "method": "relative_humidity",
                     "temperature": "T2M",
@@ -1073,12 +1096,14 @@ class TestStandaloneEarthAccessIngestHelper:
 
         assert set(fields) == {
             "MERRA2_T2M",
-            "MERRA2_PRECIP_MM_INTERVAL",
+            "MERRA2_PRECIP_MM_H",
             "DAY_OF_YEAR",
             "SUNSHINE_HOURS",
             "MERRA2_RH2M",
+            "U10",
         }
-        assert np.allclose(written["MERRA2_PRECIP_MM_INTERVAL"], 0.36)
+        assert np.allclose(written["MERRA2_PRECIP_MM_H"], 0.36)
+        assert np.allclose(written["U10"], 5.0)
         assert np.allclose(written["DAY_OF_YEAR"], 237.5)
         assert np.all(
             (written["SUNSHINE_HOURS"] >= 0.0) & (written["SUNSHINE_HOURS"] <= 24.0)

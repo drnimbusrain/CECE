@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Prepare global annual pollen RF inputs from MERRA-2 and pollen observations."""
+"""Legacy Li/Ambee annual RF preparation; not used by inline pollen.
+
+Use prepare_pollen_lur.py for Pollen Sense station LUR and base flux maps.
+"""
 
 from __future__ import annotations
 
