@@ -29,13 +29,13 @@ $$f_T = [1+\exp(-s(T_C-T_0))]^{-1},\qquad T_C=T_K-273.15.$$
 The selected wind trigger estimates friction velocity from 10 m wind using
 the **neutral log law**, zero displacement height, and von Karman constant 0.4:
 
-$$
+```math
 u_{\ast}=\frac{0.4\,U_{10}}{\ln(10/z_0)},\qquad
 f_U=\begin{cases}
 0,&u_{\ast}\le u_{\ast,0},\\
 1-\exp[-(u_{\ast}-u_{\ast,0})/u_{\ast,s}],&u_{\ast}>u_{\ast,0}.
 \end{cases}
-$$
+```
 
 Do not compare U10 directly to a friction-velocity threshold, map a surface
 layer wind at another height as U10, or substitute USTAR as convective velocity.
@@ -44,13 +44,13 @@ choose and validate roughness and release thresholds for each taxon/domain.
 
 Both RH and precipitation use the same bounded linear suppression:
 
-$$
+```math
 f(x;l,h)=\begin{cases}
 1,&x\le l,\\
 (h-x)/(h-l),&l<x<h,\\
 0,&x\ge h.
 \end{cases}
-$$
+```
 
 Precipitation is a **rate in mm h-1**, independent of `dt`. Convert a host rate
 in kg m-2 s-1 (equivalently mm s-1) by multiplying by 3600. If the host
