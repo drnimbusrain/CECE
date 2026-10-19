@@ -12,7 +12,6 @@
 #include <dagr/logging.hpp>
 #include <filesystem>
 #include <fstream>
-#include <iostream>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -156,11 +155,21 @@ StreamConfig CeceDriverOrchestrator::BuildStreamConfig(const YAML::Node& stream,
     // Missing file path is recorded as empty (not thrown); the existing
     // collective gate in AdvanceTime surfaces it later (Req 1.4).
     if (stream["file"]) {
-        cfg.input_file_path = stream["file"].as<std::string>();
+        const YAML::Node file = stream["file"];
+        if (file.IsSequence()) {
+            if (file.size() != 1) {
+                throw std::invalid_argument("cece_data stream '" + stream["name"].as<std::string>("") +
+                                            "': the standalone driver reads one file per stream; got a list of " + std::to_string(file.size()) +
+                                            " files");
+            }
+            cfg.input_file_path = file[0].as<std::string>();
+        } else {
+            cfg.input_file_path = file.as<std::string>();
+        }
     }
     cfg.input_var_name = file_name;
     if (stream["mapalgo"]) {
-        cfg.mapalgo = stream["mapalgo"].as<std::string>();
+        cfg.mapalgo = cece::to_lower(stream["mapalgo"].as<std::string>());
     }
     if (stream["cadence"]) {
         cfg.cadence = stream["cadence"].as<std::string>();
@@ -285,11 +294,36 @@ void CeceDriverOrchestrator::ResolveStreamConfigsFromFile(const std::string& con
         return;
     }
 
-    // Walk every stream and populate a StreamConfig for each model variable,
-    // keyed by model name. Field resolution + defaults mirror the legacy inline
-    // AdvanceTime parse exactly.
+    // Filter EarthAccess streams before resolving local AMIO mappings.
+    std::vector<YAML::Node> local_streams;
     for (const auto& stream : config["cece_data"]["streams"]) {
-        for (const auto& var : stream["variables"]) {
+        if (!stream["source"] || stream["source"].as<std::string>() != "earthaccess") {
+            local_streams.push_back(stream);
+        }
+    }
+
+    // Walk each local stream and populate a StreamConfig for every model
+    // variable. Streams without variables map their name to itself.
+    for (const auto& stream : local_streams) {
+        if (stream["interpolation"]) {
+            throw std::invalid_argument("cece_data stream '" + stream["name"].as<std::string>("") + "': unknown key 'interpolation'; use 'tintalgo'");
+        }
+        const YAML::Node variables = stream["variables"];
+        if (!variables || variables.IsNull() || (variables.IsSequence() && variables.size() == 0)) {
+            const std::string stream_name = stream["name"].as<std::string>("");
+            if (stream_name.empty()) {
+                throw std::invalid_argument("cece_data stream requires a name for automatic variable mapping");
+            }
+            CECE_LOG_WARNING("[DRIVER] cece_data stream '" + stream_name + "' has no variables; mapping file variable '" + stream_name +
+                             "' to model field '" + stream_name + "'. Add an explicit 'variables' entry to silence this warning.");
+            out_configs.emplace(stream_name, BuildStreamConfig(stream, stream_name, stream_name, amio_worker_threads, amio_staging_buffer_count,
+                                                               amio_staging_buffer_capacity_bytes, amio_prefetch_depth));
+            continue;
+        }
+        if (!variables.IsSequence()) {
+            throw std::invalid_argument("cece_data stream variables must be a list");
+        }
+        for (const auto& var : variables) {
             std::string model_name;
             std::string file_name;
             if (var.IsScalar()) {
@@ -299,7 +333,10 @@ void CeceDriverOrchestrator::ResolveStreamConfigsFromFile(const std::string& con
                 model_name = var["model"].as<std::string>();
                 file_name = var["file"] ? var["file"].as<std::string>() : model_name;
             } else {
-                continue;
+                throw std::invalid_argument("cece_data variable mappings require a non-empty 'model'");
+            }
+            if (model_name.empty() || file_name.empty()) {
+                throw std::invalid_argument("cece_data variable mappings require non-empty file and model names");
             }
 
             // Match the legacy inline parse's first-match-wins behavior: it
@@ -557,6 +594,10 @@ CeceDriverOrchestrator::CeceDriverOrchestrator(const std::string& config_file, i
     // amio_worker_threads / amio_staging_buffer_count throws) and its
     // YAML::Exception robustness (gridspec_file_ = "" on a bad/missing file).
     ResolveStreamConfigs();
+    has_earthaccess_streams_ = HasEarthAccessStreams(config_file_);
+    if (has_earthaccess_streams_) {
+        CECE_LOG_INFO("[DRIVER] Earthaccess streams detected; standalone helper ingestion will run before local AMIO ingestion each timestep.");
+    }
 
     cece_io_ = std::make_unique<io::CeceIO>();
     cece_io_->Initialize(config_file_, nx_, ny_, nz_);
@@ -1003,6 +1044,11 @@ bool CeceDriverOrchestrator::AdvanceTime(const std::string& time_iso8601, void* 
     // 'stepwise' uses these calendar fields to select the correct file record.
     const SimDateTime sim_dt = parse_sim_datetime(time_iso8601);
 
+    if (!IngestEarthAccessStreams(time_iso8601, cece_core_data_ptr)) {
+        CECE_LOG_ERROR("[DRIVER FATAL] Earthaccess stream ingestion failed for timestep '" + time_iso8601 + "'");
+        return false;
+    }
+
     // B. Push CeceIO's newly computed emission views into CECE's data ingestor
     for (const auto& var_name : cece_io_->GetOutputVarNames()) {
         auto stream_view = cece_io_->GetFieldView(var_name);
@@ -1149,8 +1195,9 @@ bool CeceDriverOrchestrator::AdvanceTime(const std::string& time_iso8601, void* 
                     // historical binary search probed amio_read at ~20 record
                     // indices, each probe a full-record read — exactly the
                     // traffic this band-scoped design exists to avoid — and
-                    // CECE always builds against the pinned AMIO submodule,
-                    // which provides amio_describe. Fail the step instead:
+                    // CECE always builds against the AMIO pinned through HELM's
+                    // submodule pointer, which provides amio_describe. Fail the
+                    // step instead:
                     // file_nt = 0 makes the collective readiness gate below
                     // report a detailed error for this variable.
                     CECE_LOG_WARNING("[DRIVER] amio_describe failed for '" + input_var_name + "' in '" + cfg.input_file_path +

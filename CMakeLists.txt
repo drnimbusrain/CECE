@@ -67,6 +67,18 @@ if(CECE_HAS_FORTRAN AND CMAKE_Fortran_COMPILER_ID STREQUAL "IntelLLVM")
   set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -diag-disable=10440")
 endif()
 
+# IntelLLVM may use value-unsafe FP transformations by default; pin precise for reproducibility.
+# GCC is value-safe by default.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "IntelLLVM")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fp-model=precise")
+endif()
+if(CMAKE_C_COMPILER_ID STREQUAL "IntelLLVM")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fp-model=precise")
+endif()
+if(CECE_HAS_FORTRAN AND CMAKE_Fortran_COMPILER_ID STREQUAL "IntelLLVM")
+  set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -fp-model=precise")
+endif()
+
 # --- Dependencies ---
 #
 # Every external dependency is discovered with find_package() first; FetchContent
@@ -443,6 +455,8 @@ set(
   src/core/cece_clock.cpp
   src/core/cece_config_parser.cpp
   src/core/cece_compute.cpp
+  src/core/cece_local_time.cpp
+  src/core/cece_utc_grid.cpp
   src/core/cece_stacking_engine.cpp
   src/core/cece_physics_factory.cpp
   src/core/cece_provenance.cpp
@@ -467,7 +481,6 @@ set(
   src/core/cece_diagnostic_manager.cpp
   src/core/cece_io.cpp
   src/core/cece_core_driver_config.cpp
-  src/core/cece_core_advertise.cpp
   src/core/cece_core_realize.cpp
   src/core/cece_core_realize_wrapper.cpp
   src/core/cece_core_initialize_p1.cpp
@@ -494,14 +507,6 @@ if(CECE_HAS_FORTRAN)
     src/core/physics/lightning_kernel.F90
     src/core/physics/cece_soil_nox_fortran_bridge.cpp
     src/core/physics/soil_nox_kernel.F90
-    src/core/physics/cece_dust_fortran_bridge.cpp
-    src/core/physics/dust_kernel.F90
-    src/core/physics/cece_fengsha_fortran_bridge.cpp
-    src/core/physics/fengsha_kernel.F90
-    src/core/physics/cece_ginoux_fortran_bridge.cpp
-    src/core/physics/ginoux_kernel.F90
-    src/core/physics/cece_k14_fortran_bridge.cpp
-    src/core/physics/k14_kernel.F90
     src/core/physics/cece_volcano_fortran_bridge.cpp
     src/core/physics/volcano_kernel.F90
     src/core/physics/cece_bdsnp_fortran_bridge.cpp
@@ -567,11 +572,17 @@ add_library(
   src/driver/cece_helm_graph.cpp
   src/driver/cece_regridder_utils.cpp
   src/driver/cece_standalone_writer.cpp
+  src/driver/cece_core_local_time_init.cpp
   src/driver/cece_core_writer_init.cpp
   src/driver/cece_amio_utils.cpp
   src/driver/cece_calendar.cpp
   src/driver/cece_time_indexing.cpp
+  src/driver/cece_driver_earthaccess.cpp
   src/driver/cece_driver_facade.cpp
+  src/driver/cece_grid_spec_yaml.cpp
+  src/driver/cece_grid_spec_esmf.cpp
+  src/driver/cece_simulation.cpp
+  src/driver/cece_sim_c_abi.cpp
 )
 
 target_include_directories(
