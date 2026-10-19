@@ -61,6 +61,21 @@ This directory contains example YAML configuration files demonstrating various C
 - Verify output with `python tools/lightning_diagnostics_example.py check`
 - See [the lightning guide](../docs/lightning_nox.md) for units, build commands, and reference values
 
+### cece_config_lightning_earthaccess_satellite.yaml
+**Direct NASA Satellite Cloud-Top-Height Example**
+- Reads daily CALIOP-CERES cloud-top heights and MERRA-2 land fractions through EarthAccess
+- Uses NASA's static MERRA-2 land-fraction granule and derives grid-cell area from the configured grid
+- The satellite product is limited to non-polar ocean observations and liquid cloud tops below 3 km; it is not representative of lightning convection
+- Requires Earthdata credentials and the `cloud` extra
+
+### cece_config_lightning_earthaccess_merra2.yaml
+**MERRA-2 Cloud-Top-Height Approximation Example**
+- Reads cloud-top pressure, cloud-top temperature, and surface pressure from hourly MERRA-2
+- Estimates height above ground with the hypsometric equation, using cloud-top temperature as the layer-mean temperature
+- Uses MERRA-2 land fraction and derives grid-cell area from the configured grid
+- The derived height is an approximation, not a retrieved geometric cloud-top height
+- Requires Earthdata credentials and the `cloud` extra
+
 ### cece_config_diagnostics.yaml
 **Scheme Diagnostics Example**
 - Uses the `example_diagnostic_computation` scheme, which declares the diagnostics `temperature_anomaly` and `emission_efficiency`

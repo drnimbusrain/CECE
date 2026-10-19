@@ -93,6 +93,15 @@ The [configuration](../examples/cece_config_lightning_diagnostics.yaml) maps the
 
 At 10 km, the default flash rate is approximately `0.04554148546` flashes/s/cell. Land efficiency is 500 mol NO/flash and ocean efficiency is approximately 260.0465 mol NO/flash. The checker verifies these relationships, area-normalized density, all three vertical NO levels, output units, and clear-sky resetting. The standalone writer labels each result with the end-of-step time, so inputs at 00:00 and 01:00 produce files labeled 01:00 and 02:00. Use a clean output directory; the checker expects exactly two `lightning_*.nc` files.
 
+## EarthAccess Examples
+
+Two remote-input examples are provided:
+
+- [Direct satellite height](../examples/cece_config_lightning_earthaccess_satellite.yaml) reads `cloud_top_height` from NASA's `CALIOP_CLOUDSAT_MODIS_25KM` daily product, plus land fraction from the static MERRA-2 `M2C0NXASM` collection. This satellite product covers non-polar oceans and only liquid clouds with tops below 3 km; it is useful for demonstrating direct field ingestion, but does not represent the deep convective cloud tops needed for production lightning-NOx estimates.
+- [MERRA-2 estimate](../examples/cece_config_lightning_earthaccess_merra2.yaml) reads `CLDPRS`, `CLDTMP`, and `PS` from `M2T1NXSLV`. The EarthAccess helper estimates height above ground with `z = (R_d T / g) ln(P_s / P_c)`, using cloud-top temperature as a proxy for the layer-mean temperature. This is an approximation, not a retrieved geometric cloud-top height. The config also reads static `FRLAND` from `M2C0NXASM`.
+
+Both examples compute `cell_area` from the configured regular-grid cell boundaries, use nearest-neighbor remapping onto a small 4x2 target grid, and export the same five lightning fields as the synthetic example. Install `cece-tools[cloud]`, configure Earthdata Login, then run the standalone driver with the selected YAML config. See [the EarthAccess setup and staging guide](scripts.md#stage_earthaccess_streamspy) for credentials and staging options.
+
 ## Compatibility Notes
 
 The previous native implementation divided cell-integrated production by an unexplained `1e6`, treated the raw coefficient as a per-second rate, and added into the previous emission field. These are now corrected. With default minute-based coefficients, positive-column NO production increases by `1e6/60` relative to the old single-call result. Set `flash_rate_time_unit: seconds` only for a coefficient calibrated in flashes/s; it does not restore the erroneous mass conversion.
