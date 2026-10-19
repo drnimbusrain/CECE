@@ -8,6 +8,9 @@
 # fallback, not a vegetation inventory, if the gridded AEF is unavailable.
 # All default_aef values below use kmol class m-2 s-1. For production,
 # supply class-specific gridded AEF_<CLASS> fields or calibrated defaults.
+# Converted from mass-basis defaults by dividing by class MW [kg kmol-1]:
+# ISOP: 68.12; monoterpenes: 136.23; sesquiterpenes: 204.36.
+# SQT defaults use C15 class MW, not the MTPO target's C10 proxy MW.
 # No individual-species emission inputs are required.
 # LIMO/MTPA reuse RACM2/CRACMM LIM/API profiles; MTPO receives residual
 # monoterpene fractions plus a broad SESQ proxy, not resolved farnesene.
@@ -48,21 +51,21 @@ physics_schemes:
           agro: 0.6
           amat: 1.0
           aold: 0.9
-          default_aef: 1.0e-9
+          default_aef: 1.4679976512037582e-11
         MT_PINE:
-          default_aef: 3.0e-10
+          default_aef: 2.2021581149526536e-12
         MT_ACYC:
-          default_aef: 3.0e-10
+          default_aef: 2.2021581149526536e-12
         MT_CAMP:
-          default_aef: 3.0e-10
+          default_aef: 2.2021581149526536e-12
         MT_SABI:
-          default_aef: 3.0e-10
+          default_aef: 2.2021581149526536e-12
         MT_AROM:
-          default_aef: 3.0e-10
+          default_aef: 2.2021581149526536e-12
         SQT_HR:
-          default_aef: 1.0e-10
+          default_aef: 4.893325504012526e-13
         SQT_LR:
-          default_aef: 1.0e-10
+          default_aef: 4.893325504012526e-13
 
 cece_data:
   streams:
