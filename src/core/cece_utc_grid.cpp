@@ -31,7 +31,9 @@ bool ReadExact(std::FILE* f, void* buf, std::size_t n) {
 }
 
 std::uint16_t ReadU16Le(const unsigned char* p) {
-    return static_cast<std::uint16_t>(p[0]) | (static_cast<std::uint16_t>(p[1]) << 8);
+    const auto low = static_cast<std::uint32_t>(p[0]);
+    const auto high = static_cast<std::uint32_t>(p[1]);
+    return static_cast<std::uint16_t>(low | (high << 8));
 }
 
 }  // namespace
@@ -47,7 +49,9 @@ UtcGrid DecodeUtcGridRle(const std::string& path) {
     std::uint16_t nrows_u16 = 0;
     bool ok = ReadExact(f, magic, 4) && ReadExact(f, reinterpret_cast<unsigned char*>(&nrows_u16), 2);
     if (ok) {
-        const std::uint32_t got = ReadU16Le(magic) | (static_cast<std::uint32_t>(ReadU16Le(magic + 2)) << 16);
+        const auto low = static_cast<std::uint32_t>(ReadU16Le(magic));
+        const auto high = static_cast<std::uint32_t>(ReadU16Le(magic + 2));
+        const std::uint32_t got = low | (high << 16);
         if (got != kUtcGridMagic) {
             ok = false;
         }
