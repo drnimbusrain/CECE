@@ -10,7 +10,7 @@ CECE provides two C++ MEGAN biogenic emission schemes:
     existing `"native"` spelling remains an equivalent compatibility alias.
   - `"hemco_3_12_1"` — source-pinned HEMCO 3.12.1 stateless isoprene calculation
     using supplied effective inputs and fixed source parameters.
-- **`megan3`** — CECE's 19-class biogenic emission and chemical-speciation scheme. Its C++ runtime uses bulk activity factors; the available multilayer canopy helpers are not yet wired into that emission calculation. This is not a claim of complete or independently validated upstream MEGAN3 science.
+- **`megan3`** — CECE's multi-class biogenic emission and chemical-speciation scheme. Its C++ runtime uses bulk activity factors; the available multilayer canopy helpers are not yet wired into that emission calculation. This is not a claim of complete or independently validated upstream MEGAN3 science.
 
 Both schemes execute CECE code; `hemco_3_12_1` does not launch HEMCO, and
 `megan3` does not launch a standalone MEGAN3 model. The HEMCO method is a
@@ -137,13 +137,13 @@ method name from `native` to `megan21` does not alter defaults or calculations.
 
 ## MEGAN3 (Multi-Species, Multi-Class)
 
-The C++ MEGAN3-class scheme computes 19 class totals using bulk activity factors and converts them to mechanism-specific output species via a configurable speciation engine. Its separate canopy helpers do not currently affect those runtime totals.
+The C++ MEGAN3-class scheme computes per-class totals using bulk activity factors and converts them to mechanism-specific output species via a configurable speciation engine. Its separate canopy helpers do not currently affect those runtime totals.
 
 ### Registration Names
 
 - Native C++: `"megan3"`
 
-### 19 Emission Classes
+### Emission Classes
 
 | Class | Description |
 | --- | --- |
@@ -166,6 +166,40 @@ The C++ MEGAN3-class scheme computes 19 class totals using bulk activity factors
 | STRESS | Stress-induced emissions |
 | OTHER | Other VOCs |
 | CO | Carbon monoxide |
+| APIN | α-pinene (explicit MEGANv2.1 class) |
+| BPIN | β-pinene (explicit MEGANv2.1 class) |
+| SABI | Sabinene (explicit MEGANv2.1 class) |
+| CARE | 3-carene (explicit MEGANv2.1 class) |
+| LIMO | Limonene (explicit MEGANv2.1 class) |
+| MYRC | Myrcene (explicit MEGANv2.1 class) |
+| OCIM | t-β-ocimene (explicit MEGANv2.1 class) |
+| OMON | Other monoterpenes (MEGANv2.1 34-compound class) |
+| FARN | α-farnesene (explicit MEGANv2.1 class) |
+
+The first 19 rows are CECE's lumped MEGAN3 classes. The last nine are explicit
+MEGANv2.1 compound classes from Guenther et al. (2012), Table 1. Their built-in
+activity parameters (β, LDF, Ct1, Ceo, A_new, A_gro, A_mat, A_old) follow
+Table 4. Their built-in `default_aef` values are the arithmetic mean of the 15
+plant-functional-type emission factors in Table 2, converted from µg m⁻² h⁻¹
+to kmol m⁻² s⁻¹ using 136.23 kg kmol⁻¹ (C10H16) or 204.36 kg kmol⁻¹
+(α-farnesene):
+
+| Class | Mean Table 2 EF (µg m⁻² h⁻¹) | `default_aef` (kmol m⁻² s⁻¹) | β | LDF | Ct1 | Ceo | A_new | A_gro | A_mat | A_old |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| APIN | 307.87 | 6.2775e-13 | 0.10 | 0.6 | 80 | 1.83 | 2.0 | 1.8 | 1.0 | 1.05 |
+| BPIN | 119.07 | 2.4278e-13 | 0.10 | 0.2 | 80 | 1.83 | 2.0 | 1.8 | 1.0 | 1.05 |
+| SABI | 44.19 | 9.0098e-14 | 0.10 | 0.6 | 80 | 1.83 | 2.0 | 1.8 | 1.0 | 1.05 |
+| CARE | 48.75 | 9.9396e-14 | 0.10 | 0.2 | 80 | 1.83 | 2.0 | 1.8 | 1.0 | 1.05 |
+| LIMO | 63.52 | 1.2952e-13 | 0.10 | 0.2 | 80 | 1.83 | 2.0 | 1.8 | 1.0 | 1.05 |
+| MYRC | 37.41 | 7.6287e-14 | 0.10 | 0.6 | 80 | 1.83 | 2.0 | 1.8 | 1.0 | 1.05 |
+| OCIM | 79.87 | 1.6285e-13 | 0.10 | 0.8 | 80 | 1.83 | 2.0 | 1.8 | 1.0 | 1.05 |
+| OMON | 114.67 | 2.3381e-13 | 0.10 | 0.4 | 80 | 1.83 | 2.0 | 1.8 | 1.0 | 1.05 |
+| FARN | 32.87 | 4.4674e-14 | 0.17 | 0.5 | 130 | 2.37 | 0.4 | 0.6 | 1.0 | 0.95 |
+
+Only classes referenced by the selected speciation mapping are computed; the
+others remain zero. Gridded `AEF_<CLASS>` import fields (kmol m⁻² s⁻¹)
+override the scalar defaults, e.g. HEMCO MEGANv2.1 EF maps divided by the
+compound molecular weight.
 
 ### Gamma Factors
 
@@ -202,7 +236,7 @@ All light-dependent factors are zero when solar cosine ≤ 0 (nighttime).
 
 ### Speciation
 
-After computing 19 class totals, the speciation engine converts them to mechanism-specific output species using scale factors from a YAML MAP file:
+After computing the class totals, the speciation engine converts them to mechanism-specific output species using scale factors from a YAML MAP file:
 
 ```
 output[species] = (Σ class_total[c] × scale_factor[c→s]) × MW[s]
@@ -233,37 +267,31 @@ physics_schemes:
 
 | Output | Contributions |
 | --- | --- |
-| `MEGAN_ISOP` | CECE ISOP class |
-| `MEGAN_LIMO` | 0.70 MT_ACYC + 0.15 MT_SABI + 0.15 MT_AROM |
-| `MEGAN_MTPA` | 0.65 MT_PINE + 0.20 MT_CAMP + 0.15 MT_SABI |
-| `MEGAN_MTPO` | 0.35 MT_PINE + 0.30 MT_ACYC + 0.80 MT_CAMP + 0.70 MT_SABI + 0.85 MT_AROM + 0.70 SQT_HR + 0.30 SQT_LR |
+| `MEGAN_ISOP` | ISOP |
+| `MEGAN_LIMO` | LIMO (limonene) |
+| `MEGAN_MTPA` | APIN + BPIN + SABI + CARE (α-pinene, β-pinene, sabinene, 3-carene) |
+| `MEGAN_MTPO` | MYRC + OCIM + OMON + 1.50011 FARN (myrcene, t-β-ocimene, other monoterpenes, α-farnesene) |
 
-No individual-species emissions are required. The mapping reuses `API` for
-MTPA and `LIM` for LIMO from the existing RACM2 and CRACMM mapping files.
-These are **proxies**, not exact individual-compound sums: API includes
-camphene, and LIM includes myrcene, ocimene, and terpinolene as well as limonene.
+The mapping follows the offline HEMCO MEGANv2.1 GOCART lumping and uses
+explicit MEGANv2.1 compound classes, each with its own Guenther et al. (2012)
+Table 4 activity parameters and Table 2-derived default emission factor (see
+[Emission Classes](#emission-classes)). The lumped MEGAN3 classes (`MT_*`,
+`SQT_*`) do not contribute, and NO is not mapped, so no soil-NO scheme is
+needed.
 
-MTPO receives the residual monoterpene fraction for each source class,
-`1 - MTPA[class] - LIMO[class]`, so the five monoterpene classes are neither
-duplicated nor discarded across these outputs. This residual allocation is
-a new assumption, not an existing GOCART profile. MTPO also reuses the
-RACM2/CRACMM `SESQ` profile (0.70 SQT_HR + 0.30 SQT_LR) as a broad
-farnesene proxy. These classes include other sesquiterpenes; the profile does
-not isolate farnesene. Other MEGAN classes do not contribute.
-
-The engine applies the SPC target molecular weight to each mapped amount
-flux. LIMO, MTPA, and MTPO use the representative C10 value, 136.23 kg kmol-1,
-including MTPO's sesquiterpene contribution. Thus that contribution is a
-C10-equivalent lumped mass flux, not a true C15 sesquiterpene mass sum.
-Per-class AEF inputs remain in kmol class m-2 s-1; gridded `AEF_<CLASS>`
-fields override configured scalar `default_aef` values.
+The engine applies the SPC target molecular weight (136.23 kg kmol⁻¹ for LIMO,
+MTPA, and MTPO) to each mapped amount flux, so monoterpene contributions are
+exact mass sums. The FARN factor, 204.36 / 136.23 = 1.50011, preserves the
+α-farnesene (C15H24) mass flux in MTPO. Per-class AEF inputs are in kmol
+compound m⁻² s⁻¹; gridded `AEF_<CLASS>` fields (for example `AEF_APIN`,
+`AEF_LIMO`) override configured scalar `default_aef` values.
 
 Select `MEGAN_ISOP`, `MEGAN_LIMO`, `MEGAN_MTPA`, and `MEGAN_MTPO` in
 `output.fields`. The target species names are `ISOP`, `LIMO`, `MTPA`, and
 `MTPO`, but CECE writes the prefixed export names. Use the
 [standalone GOCART example](../examples/cece_config_megan3_gocart.yaml).
-The coefficients are a documented aggregate-class approximation, not
-independently verified GCAFS v1 scientific conformance.
+Scalar default AEFs are global PFT means; supply gridded AEF fields for
+spatially resolved emissions.
 
 ### Soil NO Handling
 
@@ -383,7 +411,7 @@ species:
 
 ### MAP File (Speciation Mappings)
 
-Defines how the 19 MEGAN emission classes map to mechanism species with per-class scale factors. Uses a dataset-oriented format that supports multiple emission sources:
+Defines how the MEGAN emission classes map to mechanism species with per-class scale factors. Uses a dataset-oriented format that supports multiple emission sources:
 
 ```yaml
 mechanism: CB6_AE7

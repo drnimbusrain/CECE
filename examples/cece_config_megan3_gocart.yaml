@@ -3,19 +3,19 @@
 # All input files must match the ordered 72 x 46 gridspec exactly:
 # lon=-180,-175,...,175; lat=-89,-86,-82,...,86,89.
 # Input data are not bundled. Provide records covering the simulation times.
-# All four outputs are computed from CECE's 19 MEGAN3 emission classes.
-# AEF_ISOP must be in kmol ISOP m-2 s-1; default_aef is an illustrative
-# fallback, not a vegetation inventory, if the gridded AEF is unavailable.
-# All default_aef values below use kmol class m-2 s-1. For production,
-# supply class-specific gridded AEF_<CLASS> fields or calibrated defaults.
-# Converted from mass-basis defaults by dividing by class MW [kg kmol-1]:
-# ISOP: 68.12; monoterpenes: 136.23; sesquiterpenes: 204.36.
-# SQT defaults use C15 class MW, not the MTPO target's C10 proxy MW.
-# No individual-species emission inputs are required.
-# LIMO/MTPA reuse RACM2/CRACMM LIM/API profiles; MTPO receives residual
-# monoterpene fractions plus a broad SESQ proxy, not resolved farnesene.
-# These lumped profiles are not independently validated GCAFS v1 speciation.
-# With no soil-NO scheme, MEGAN3 warns and leaves its unused NO class zero.
+# Outputs follow the offline HEMCO MEGANv2.1 GOCART lumping, computed from
+# explicit MEGANv2.1 compound classes (Guenther et al., 2012, GMD 5, 1471):
+#   LIMO = LIMO;  MTPA = APIN + BPIN + SABI + CARE;
+#   MTPO = MYRC + OCIM + FARN + OMON (FARN mass-preserved as C10-equivalent).
+# Per-class parameters (beta, ldf, ct1, cleo, anew, agro, amat, aold) are
+# from Guenther et al. (2012), Table 4.
+# default_aef values are kmol compound m-2 s-1: the arithmetic mean of the 15
+# PFT emission factors in Guenther et al. (2012), Table 2 (ug m-2 h-1), times
+# 1e-9 / 3600 and divided by 136.23 (C10H16) or 204.36 (alpha-farnesene)
+# kg kmol-1. They are global scalar fallbacks; gridded AEF_<CLASS> fields
+# (e.g. the HEMCO MEGANv2.1 EF maps divided by the compound MW) override them.
+# AEF_ISOP must be in kmol ISOP m-2 s-1; its default_aef is illustrative.
+# NO is not mapped for GOCART, so no soil-NO scheme is required.
 
 driver:
   start_time: "2021-06-20T12:00:00"
@@ -52,20 +52,96 @@ physics_schemes:
           amat: 1.0
           aold: 0.9
           default_aef: 1.4679976512037582e-11
-        MT_PINE:
-          default_aef: 2.2021581149526536e-12
-        MT_ACYC:
-          default_aef: 2.2021581149526536e-12
-        MT_CAMP:
-          default_aef: 2.2021581149526536e-12
-        MT_SABI:
-          default_aef: 2.2021581149526536e-12
-        MT_AROM:
-          default_aef: 2.2021581149526536e-12
-        SQT_HR:
-          default_aef: 4.893325504012526e-13
-        SQT_LR:
-          default_aef: 4.893325504012526e-13
+        APIN:  # alpha-pinene: 307.87 ug m-2 h-1
+          ldf: 0.6
+          ct1: 80.0
+          cleo: 1.83
+          beta: 0.1
+          anew: 2.0
+          agro: 1.8
+          amat: 1.0
+          aold: 1.05
+          default_aef: 6.277509984476146e-13
+        BPIN:  # beta-pinene: 119.07 ug m-2 h-1
+          ldf: 0.2
+          ct1: 80.0
+          cleo: 1.83
+          beta: 0.1
+          anew: 2.0
+          agro: 1.8
+          amat: 1.0
+          aold: 1.05
+          default_aef: 2.427811353892247e-13
+        SABI:  # sabinene: 44.19 ug m-2 h-1
+          ldf: 0.6
+          ct1: 80.0
+          cleo: 1.83
+          beta: 0.1
+          anew: 2.0
+          agro: 1.8
+          amat: 1.0
+          aold: 1.05
+          default_aef: 9.009817275250736e-14
+        CARE:  # 3-carene: 48.75 ug m-2 h-1
+          ldf: 0.2
+          ct1: 80.0
+          cleo: 1.83
+          beta: 0.1
+          anew: 2.0
+          agro: 1.8
+          amat: 1.0
+          aold: 1.05
+          default_aef: 9.939617368230743e-14
+        LIMO:  # limonene: 63.52 ug m-2 h-1
+          ldf: 0.2
+          ct1: 80.0
+          cleo: 1.83
+          beta: 0.1
+          anew: 2.0
+          agro: 1.8
+          amat: 1.0
+          aold: 1.05
+          default_aef: 1.2951952172388203e-13
+        MYRC:  # myrcene: 37.41 ug m-2 h-1
+          ldf: 0.6
+          ct1: 80.0
+          cleo: 1.83
+          beta: 0.1
+          anew: 2.0
+          agro: 1.8
+          amat: 1.0
+          aold: 1.05
+          default_aef: 7.628710704391537e-14
+        OCIM:  # t-beta-ocimene: 79.87 ug m-2 h-1
+          ldf: 0.8
+          ct1: 80.0
+          cleo: 1.83
+          beta: 0.1
+          anew: 2.0
+          agro: 1.8
+          amat: 1.0
+          aold: 1.05
+          default_aef: 1.6285095195760983e-13
+        OMON:  # other monoterpenes: 114.67 ug m-2 h-1
+          ldf: 0.4
+          ct1: 80.0
+          cleo: 1.83
+          beta: 0.1
+          anew: 2.0
+          agro: 1.8
+          amat: 1.0
+          aold: 1.05
+          default_aef: 2.3380938010608427e-13
+        FARN:  # alpha-farnesene: 32.87 ug m-2 h-1
+          ldf: 0.5
+          ct1: 130.0
+          cleo: 2.37
+          beta: 0.17
+          anew: 0.4
+          agro: 0.6
+          amat: 1.0
+          aold: 0.95
+          default_aef: 4.4674249508855105e-14
 
 cece_data:
   streams:
@@ -93,6 +169,19 @@ cece_data:
       data_model: auto
       variables:
         - { file: AEF_ISOP, model: AEF_ISOP }
+    # Optional gridded explicit-compound AEFs [kmol compound m-2 s-1]:
+    # - name: MEGAN_TERP_AEF
+    #   file: "/path/to/megan_terp_aef_4x5.nc"
+    #   mapalgo: passthrough
+    #   data_model: auto
+    #   variables:
+    #     - { file: AEF_APIN, model: AEF_APIN }
+    #     - { file: AEF_BPIN, model: AEF_BPIN }
+    #     - { file: AEF_SABI, model: AEF_SABI }
+    #     - { file: AEF_CARE, model: AEF_CARE }
+    #     - { file: AEF_LIMO, model: AEF_LIMO }
+    #     - { file: AEF_MYRC, model: AEF_MYRC }
+    #     - { file: AEF_OCIM, model: AEF_OCIM }
 
 output:
   enabled: true
@@ -107,12 +196,12 @@ output:
     - name: MEGAN_LIMO
       attributes:
         units: "kg m-2 s-1"
-        long_name: "GOCART limonene-type emission flux (RACM2/CRACMM LIM proxy)"
+        long_name: "GOCART limonene emission flux (MEGANv2.1 LIMO)"
     - name: MEGAN_MTPA
       attributes:
         units: "kg m-2 s-1"
-        long_name: "GOCART pinene-type emission flux (RACM2/CRACMM API proxy)"
+        long_name: "GOCART MTPA emission flux (alpha-pinene + beta-pinene + sabinene + 3-carene)"
     - name: MEGAN_MTPO
       attributes:
         units: "kg m-2 s-1"
-        long_name: "GOCART other-terpene emission flux (residual monoterpenes and SESQ proxy)"
+        long_name: "GOCART MTPO emission flux (myrcene + t-beta-ocimene + alpha-farnesene + other monoterpenes)"

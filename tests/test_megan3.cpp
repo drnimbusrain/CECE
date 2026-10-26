@@ -482,7 +482,8 @@ RC_GTEST_PROP(EmissionActivityProperty, Property9_LeafAgeFractionsSumToUnity, ()
 /// Valid emission class names for generating speciation configs.
 static const std::vector<std::string> kValidEmissionClasses = {"ISOP", "MBO",    "MT_PINE", "MT_ACYC", "MT_CAMP", "MT_SABI", "MT_AROM",
                                                                "NO",   "SQT_HR", "SQT_LR",  "MEOH",    "ACTO",    "ETOH",    "ACID",
-                                                               "LVOC", "OXPROD", "STRESS",  "OTHER",   "CO"};
+                                                               "LVOC", "OXPROD", "STRESS",  "OTHER",   "CO",      "APIN",    "BPIN",
+                                                               "SABI", "CARE",   "LIMO",    "MYRC",    "OCIM",    "OMON",    "FARN"};
 
 /// Generate a random alphanumeric string of given length.
 static std::string GenAlpha(std::size_t len) {
@@ -602,12 +603,15 @@ RC_GTEST_PROP(Megan3SchemeProperty, Property17_MissingConfigDefaultValues, ()) {
     static constexpr bool kDefaultAqStress = false;
 
     // Documented default LDF values per class (from cece_emission_activity.cpp)
-    static constexpr double kDefaultLdf[19] = {0.9996, 0.80, 0.10, 0.10, 0.10, 0.10, 0.10, 0.00, 0.50, 0.50,
-                                               0.80,   0.20, 0.80, 0.00, 0.00, 0.20, 1.00, 0.20, 0.00};
+    // Explicit MEGANv2.1 classes (APIN..FARN) follow Guenther et al. (2012), Table 4.
+    static constexpr double kDefaultLdf[kNumEmissionClasses] = {0.9996, 0.80, 0.10, 0.10, 0.10, 0.10, 0.10, 0.00, 0.50, 0.50,
+                                                                0.80,   0.20, 0.80, 0.00, 0.00, 0.20, 1.00, 0.20, 0.00,
+                                                                0.6,    0.2,  0.6,  0.2,  0.2,  0.6,  0.8,  0.4,  0.5};
 
     // Documented default beta values per class
-    static constexpr double kDefaultBeta[19] = {0.13, 0.13, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.17, 0.17,
-                                                0.08, 0.10, 0.08, 0.10, 0.13, 0.10, 0.13, 0.10, 0.10};
+    static constexpr double kDefaultBeta[kNumEmissionClasses] = {0.13, 0.13, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.17, 0.17,
+                                                                 0.08, 0.10, 0.08, 0.10, 0.13, 0.10, 0.13, 0.10, 0.10,
+                                                                 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.17};
 
     // Generate a random subset of optional parameters to include
     // Each parameter has a 50% chance of being included
@@ -669,7 +673,7 @@ RC_GTEST_PROP(Megan3SchemeProperty, Property17_MissingConfigDefaultValues, ()) {
     auto h_beta = Kokkos::create_mirror_view(calc.coefficients_.beta);
     Kokkos::deep_copy(h_beta, calc.coefficients_.beta);
 
-    for (int c = 0; c < 19; ++c) {
+    for (int c = 0; c < kNumEmissionClasses; ++c) {
         RC_ASSERT(std::abs(h_ldf(c) - kDefaultLdf[c]) < 1e-10);
         RC_ASSERT(std::abs(h_beta(c) - kDefaultBeta[c]) < 1e-10);
     }
@@ -682,6 +686,7 @@ RC_GTEST_PROP(Megan3SchemeProperty, Property17_MissingConfigDefaultValues, ()) {
 // ============================================================================
 
 #include <chrono>
+#include <map>
 #include <filesystem>
 #include <fstream>
 #include <random>
@@ -1188,6 +1193,52 @@ TEST_F(Megan3SchemeTest, BdsnpToMegan3Pipeline) {
     auto& dv_no_soil_zero = export_state.fields["MEGAN_NO"];
     dv_no_soil_zero.sync<Kokkos::HostSpace>();
     EXPECT_DOUBLE_EQ(dv_no_soil_zero.view_host()(0, 0, 0), 0.0);
+}
+
+// ============================================================================
+// Test: GOCART outputs come from explicit MEGANv2.1 classes, not lumped MT_*
+// ============================================================================
+
+TEST_F(Megan3SchemeTest, GocartUsesExplicitTerpenoidClasses) {
+    const std::string src_dir = CECE_SOURCE_DIR;
+    for (const auto* name : {"MEGAN_LIMO", "MEGAN_MTPA", "MEGAN_MTPO"}) export_state.fields[name] = create_dv(name, 0.0);
+    auto run = [&](const std::string& extra) {
+        const std::string text = "mechanism_file: \"" + src_dir + "/data/speciation/spc_gocart.yaml\"\nspeciation_file: \"" + src_dir +
+                                 "/data/speciation/map_gocart.yaml\"\n" + extra;
+        auto config = conf::Config::from_string(text);
+        Megan3Scheme scheme;
+        scheme.Initialize(config.root(), nullptr);
+        scheme.Run(import_state, export_state);
+        std::map<std::string, double> values;
+        for (const auto* name : {"MEGAN_ISOP", "MEGAN_LIMO", "MEGAN_MTPA", "MEGAN_MTPO"}) {
+            auto& field = export_state.fields.at(name);
+            field.sync<Kokkos::HostSpace>();
+            values[name] = field.view_host()(0, 0, 0);
+        }
+        return values;
+    };
+    const auto base = run("");
+    for (const auto& [name, value] : base) EXPECT_GT(value, 0.0) << name;
+    // Mean-PFT Table 2 factors: MTPA (APIN+BPIN+SABI+CARE) dominates LIMO.
+    EXPECT_GT(base.at("MEGAN_MTPA"), base.at("MEGAN_LIMO"));
+
+    // Lumped MEGAN3 classes are not part of the GOCART mapping.
+    const auto lumped = run(
+        "emission_classes:\n  MT_PINE:\n    default_aef: 1.0e-6\n  MT_ACYC:\n    default_aef: 1.0e-6\n"
+        "  SQT_HR:\n    default_aef: 1.0e-6\n");
+    for (const auto& [name, value] : base) EXPECT_DOUBLE_EQ(lumped.at(name), value) << name;
+
+    // LIMO is explicit: scaling its AEF scales only MEGAN_LIMO.
+    const auto limo = run("emission_classes:\n  LIMO:\n    default_aef: 2.5903904344776406e-13\n");
+    EXPECT_NEAR(limo.at("MEGAN_LIMO"), 2.0 * base.at("MEGAN_LIMO"), 1.0e-12 * base.at("MEGAN_LIMO"));
+    EXPECT_DOUBLE_EQ(limo.at("MEGAN_MTPA"), base.at("MEGAN_MTPA"));
+    EXPECT_DOUBLE_EQ(limo.at("MEGAN_MTPO"), base.at("MEGAN_MTPO"));
+
+    // Gridded AEF_<CLASS> fields override explicit-class defaults.
+    import_state.fields["AEF_BPIN"] = create_dv("aef_bpin", 0.0);
+    const auto no_bpin = run("");
+    EXPECT_LT(no_bpin.at("MEGAN_MTPA"), base.at("MEGAN_MTPA"));
+    EXPECT_DOUBLE_EQ(no_bpin.at("MEGAN_LIMO"), base.at("MEGAN_LIMO"));
 }
 
 }  // namespace cece
