@@ -51,7 +51,7 @@ physics_schemes:
           agro: 0.6
           amat: 1.0
           aold: 0.9
-          default_aef: 1.4679976512037582e-11
+          default_aef: 1.0371714e-11
         APIN:  # alpha-pinene: 307.87 ug m-2 h-1
           ldf: 0.6
           ct1: 80.0
@@ -61,7 +61,7 @@ physics_schemes:
           agro: 1.8
           amat: 1.0
           aold: 1.05
-          default_aef: 6.277509984476146e-13
+          default_aef: 3.305275e-13
         BPIN:  # beta-pinene: 119.07 ug m-2 h-1
           ldf: 0.2
           ct1: 80.0
@@ -71,7 +71,7 @@ physics_schemes:
           agro: 1.8
           amat: 1.0
           aold: 1.05
-          default_aef: 2.427811353892247e-13
+          default_aef: 1.0686349e-13
         SABI:  # sabinene: 44.19 ug m-2 h-1
           ldf: 0.6
           ct1: 80.0
@@ -81,7 +81,7 @@ physics_schemes:
           agro: 1.8
           amat: 1.0
           aold: 1.05
-          default_aef: 9.009817275250736e-14
+          default_aef: 3.486376e-14
         CARE:  # 3-carene: 48.75 ug m-2 h-1
           ldf: 0.2
           ct1: 80.0
@@ -91,7 +91,7 @@ physics_schemes:
           agro: 1.8
           amat: 1.0
           aold: 1.05
-          default_aef: 9.939617368230743e-14
+          default_aef: 4.187306e-14
         LIMO:  # limonene: 63.52 ug m-2 h-1
           ldf: 0.2
           ct1: 80.0
@@ -101,7 +101,7 @@ physics_schemes:
           agro: 1.8
           amat: 1.0
           aold: 1.05
-          default_aef: 1.2951952172388203e-13
+          default_aef: 6.440317e-14
         MYRC:  # myrcene: 37.41 ug m-2 h-1
           ldf: 0.6
           ct1: 80.0
@@ -111,7 +111,7 @@ physics_schemes:
           agro: 1.8
           amat: 1.0
           aold: 1.05
-          default_aef: 7.628710704391537e-14
+          default_aef: 4.42514e-14
         OCIM:  # t-beta-ocimene: 79.87 ug m-2 h-1
           ldf: 0.8
           ct1: 80.0
@@ -121,7 +121,7 @@ physics_schemes:
           agro: 1.8
           amat: 1.0
           aold: 1.05
-          default_aef: 1.6285095195760983e-13
+          default_aef: 9.419649e-14
         OMON:  # other monoterpenes: 114.67 ug m-2 h-1
           ldf: 0.4
           ct1: 80.0
@@ -131,17 +131,7 @@ physics_schemes:
           agro: 1.8
           amat: 1.0
           aold: 1.05
-          default_aef: 2.3380938010608427e-13
-        FARN:  # alpha-farnesene: 32.87 ug m-2 h-1
-          ldf: 0.5
-          ct1: 130.0
-          cleo: 2.37
-          beta: 0.17
-          anew: 0.4
-          agro: 0.6
-          amat: 1.0
-          aold: 0.95
-          default_aef: 4.4674249508855105e-14
+          default_aef: 1.3798347e-13
 
 cece_data:
   streams:

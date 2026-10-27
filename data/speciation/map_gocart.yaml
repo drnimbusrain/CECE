@@ -24,5 +24,4 @@ datasets:
     MTPO:
       MYRC: 1.0
       OCIM: 1.0
-      FARN: 1.50011
       OMON: 1.0
