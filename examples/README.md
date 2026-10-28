@@ -58,14 +58,15 @@ This directory contains example YAML configuration files demonstrating various C
 GOCART mechanism and mapping files and writes `MEGAN_ISOP`, `MEGAN_LIMO`,
 `MEGAN_MTPA`, and `MEGAN_MTPO` in kg m-2 s-1.
 
-Replace its `/path/to` inputs with files on the specified grid. ISOP uses
-meteorology, LAI, and an `AEF_ISOP` field in kmol ISOP m-2 s-1. LIMO, MTPA,
+Replace its `/path/to` inputs with files on the specified grid. LIMO, MTPA,
 and MTPO follow the offline HEMCO MEGANv2.1 GOCART lumping from explicit
 MEGANv2.1 compound classes: LIMO = limonene; MTPA = α-pinene + β-pinene +
-sabinene + 3-carene; MTPO = myrcene + t-β-ocimene + α-farnesene + other
-monoterpenes. Each class uses Guenther et al. (2012) Table 4 parameters and a
-`default_aef` equal to the 15-PFT mean of Table 2, in kmol m-2 s-1. Optional
-gridded `AEF_<CLASS>` inputs override these defaults. See
+sabinene + 3-carene; MTPO = myrcene + t-β-ocimene + other monoterpenes. Each
+class uses Guenther et al. (2012) Table 4 parameters. Emission factors come
+from the `MEGAN_AEF` stream, which supplies a gridded `AEF_<CLASS>` field in
+kmol compound m-2 s-1 for each active class (`AEF_ISOP`, `AEF_APIN`,
+`AEF_BPIN`, `AEF_SABI`, `AEF_CARE`, `AEF_LIMO`, `AEF_MYRC`, `AEF_OCIM`,
+`AEF_OMON`), so no scalar `default_aef` is configured. See
 [the mapping](../docs/megan.md#gocart-biogenic-precursors-ufs-gcafs-v1).
 
 With the standalone driver built, run from the repository root:

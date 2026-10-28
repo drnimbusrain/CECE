@@ -1241,4 +1241,76 @@ TEST_F(Megan3SchemeTest, GocartUsesExplicitTerpenoidClasses) {
     EXPECT_DOUBLE_EQ(no_bpin.at("MEGAN_LIMO"), base.at("MEGAN_LIMO"));
 }
 
+// ============================================================================
+// Test: the GOCART example streams a gridded AEF_<CLASS> for every active class
+// ============================================================================
+
+TEST_F(Megan3SchemeTest, GocartExampleReadsGriddedAefPerClass) {
+    const std::filesystem::path src_dir = CECE_SOURCE_DIR;
+    auto example = conf::Config::from_file((src_dir / "examples/cece_config_megan3_gocart.yaml").string());
+    auto mapping = conf::Config::from_file((src_dir / "data/speciation/map_gocart.yaml").string());
+
+    std::set<std::string> stream_fields;
+    const auto streams = example.root()["cece_data"]["streams"];
+    for (std::size_t s = 0; s < streams.size(); ++s) {
+        const auto variables = streams[s]["variables"];
+        for (std::size_t v = 0; v < variables.size(); ++v) stream_fields.insert(variables[v]["model"].as_string());
+    }
+
+    // Each mapped MEGAN class must have a gridded stream and no scalar default.
+    std::map<std::string, std::string> class_to_output;
+    const auto datasets = mapping.root()["datasets"]["MEGAN"];
+    for (const auto& target : datasets.keys()) {
+        for (const auto& cls : datasets[target].keys()) class_to_output[cls] = "MEGAN_" + target;
+    }
+    const auto options = example.root()["physics_schemes"][std::size_t{0}]["options"];
+    const auto classes = options["emission_classes"];
+    ASSERT_FALSE(class_to_output.empty());
+    for (const auto& [cls, output] : class_to_output) {
+        EXPECT_TRUE(stream_fields.count("AEF_" + cls)) << "missing AEF_" << cls << " stream";
+        ASSERT_TRUE(classes[cls].is_defined()) << cls;
+        EXPECT_FALSE(classes[cls]["default_aef"].is_defined()) << cls;
+    }
+
+    for (const auto* name : {"MEGAN_ISOP", "MEGAN_LIMO", "MEGAN_MTPA", "MEGAN_MTPO"}) export_state.fields[name] = create_dv(name, 0.0);
+    for (const auto& [cls, output] : class_to_output) import_state.fields["AEF_" + cls] = create_dv("aef_" + cls, 0.0);
+
+    // Example mechanism paths are relative to the repository root.
+    const auto previous_dir = std::filesystem::current_path();
+    std::filesystem::current_path(src_dir);
+    Megan3Scheme scheme;
+    scheme.Initialize(options, nullptr);
+    std::filesystem::current_path(previous_dir);
+
+    auto run = [&]() {
+        scheme.Run(import_state, export_state);
+        std::map<std::string, double> values;
+        for (const auto* name : {"MEGAN_ISOP", "MEGAN_LIMO", "MEGAN_MTPA", "MEGAN_MTPO"}) {
+            auto& field = export_state.fields.at(name);
+            field.sync<Kokkos::HostSpace>();
+            values[name] = field.view_host()(0, 0, 0);
+        }
+        return values;
+    };
+
+    // Zero gridded AEFs give zero emissions: no scalar default leaks in.
+    for (const auto& [name, value] : run()) EXPECT_DOUBLE_EQ(value, 0.0) << name;
+
+    // Each class's gridded AEF drives only the output it is lumped into.
+    for (const auto& [cls, output] : class_to_output) SetFieldValue("AEF_" + cls, 1.0e-12);
+    const auto base = run();
+    for (const auto& [cls, output] : class_to_output) {
+        SetFieldValue("AEF_" + cls, 3.0e-12);
+        const auto bumped = run();
+        SetFieldValue("AEF_" + cls, 1.0e-12);
+        for (const auto& [name, value] : base) {
+            if (name == output) {
+                EXPECT_GT(bumped.at(name), value) << cls << " -> " << name;
+            } else {
+                EXPECT_DOUBLE_EQ(bumped.at(name), value) << cls << " -> " << name;
+            }
+        }
+    }
+}
+
 }  // namespace cece

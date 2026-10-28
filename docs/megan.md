@@ -289,9 +289,9 @@ compound m⁻² s⁻¹; gridded `AEF_<CLASS>` fields (for example `AEF_APIN`,
 Select `MEGAN_ISOP`, `MEGAN_LIMO`, `MEGAN_MTPA`, and `MEGAN_MTPO` in
 `output.fields`. The target species names are `ISOP`, `LIMO`, `MTPA`, and
 `MTPO`, but CECE writes the prefixed export names. Use the
-[standalone GOCART example](../examples/cece_config_megan3_gocart.yaml).
-Scalar default AEFs are global PFT means; supply gridded AEF fields for
-spatially resolved emissions.
+[standalone GOCART example](../examples/cece_config_megan3_gocart.yaml),
+which reads a gridded `AEF_<CLASS>` field for every active class from a
+`cece_data` stream instead of scalar defaults.
 
 ### Soil NO Handling
 

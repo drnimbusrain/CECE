@@ -6,15 +6,14 @@
 # Outputs follow the offline HEMCO MEGANv2.1 GOCART lumping, computed from
 # explicit MEGANv2.1 compound classes (Guenther et al., 2012, GMD 5, 1471):
 #   LIMO = LIMO;  MTPA = APIN + BPIN + SABI + CARE;
-#   MTPO = MYRC + OCIM + FARN + OMON (FARN mass-preserved as C10-equivalent).
+#   MTPO = MYRC + OCIM + OMON.
 # Per-class parameters (beta, ldf, ct1, cleo, anew, agro, amat, aold) are
 # from Guenther et al. (2012), Table 4.
-# default_aef values are kmol compound m-2 s-1: the arithmetic mean of the 15
-# PFT emission factors in Guenther et al. (2012), Table 2 (ug m-2 h-1), times
-# 1e-9 / 3600 and divided by 136.23 (C10H16) or 204.36 (alpha-farnesene)
-# kg kmol-1. They are global scalar fallbacks; gridded AEF_<CLASS> fields
-# (e.g. the HEMCO MEGANv2.1 EF maps divided by the compound MW) override them.
-# AEF_ISOP must be in kmol ISOP m-2 s-1; its default_aef is illustrative.
+# Emission factors are read as gridded AEF_<CLASS> fields from the MEGAN_AEF
+# stream, one per active class (ISOP, APIN, BPIN, SABI, CARE, LIMO, MYRC, OCIM,
+# OMON), in kmol compound m-2 s-1. For example, divide the HEMCO MEGANv2.1 EF
+# maps (kg m-2 s-1) by the compound MW: 68.12 (ISOP) or 136.23 (C10H16)
+# kg kmol-1. Gridded fields replace the scalar default_aef, which is omitted.
 # NO is not mapped for GOCART, so no soil-NO scheme is required.
 
 driver:
@@ -51,8 +50,7 @@ physics_schemes:
           agro: 0.6
           amat: 1.0
           aold: 0.9
-          default_aef: 1.0371714e-11
-        APIN:  # alpha-pinene: 307.87 ug m-2 h-1
+        APIN:  # alpha-pinene
           ldf: 0.6
           ct1: 80.0
           cleo: 1.83
@@ -61,8 +59,7 @@ physics_schemes:
           agro: 1.8
           amat: 1.0
           aold: 1.05
-          default_aef: 3.305275e-13
-        BPIN:  # beta-pinene: 119.07 ug m-2 h-1
+        BPIN:  # beta-pinene
           ldf: 0.2
           ct1: 80.0
           cleo: 1.83
@@ -71,8 +68,7 @@ physics_schemes:
           agro: 1.8
           amat: 1.0
           aold: 1.05
-          default_aef: 1.0686349e-13
-        SABI:  # sabinene: 44.19 ug m-2 h-1
+        SABI:  # sabinene
           ldf: 0.6
           ct1: 80.0
           cleo: 1.83
@@ -81,8 +77,7 @@ physics_schemes:
           agro: 1.8
           amat: 1.0
           aold: 1.05
-          default_aef: 3.486376e-14
-        CARE:  # 3-carene: 48.75 ug m-2 h-1
+        CARE:  # 3-carene
           ldf: 0.2
           ct1: 80.0
           cleo: 1.83
@@ -91,8 +86,7 @@ physics_schemes:
           agro: 1.8
           amat: 1.0
           aold: 1.05
-          default_aef: 4.187306e-14
-        LIMO:  # limonene: 63.52 ug m-2 h-1
+        LIMO:  # limonene
           ldf: 0.2
           ct1: 80.0
           cleo: 1.83
@@ -101,8 +95,7 @@ physics_schemes:
           agro: 1.8
           amat: 1.0
           aold: 1.05
-          default_aef: 6.440317e-14
-        MYRC:  # myrcene: 37.41 ug m-2 h-1
+        MYRC:  # myrcene
           ldf: 0.6
           ct1: 80.0
           cleo: 1.83
@@ -111,8 +104,7 @@ physics_schemes:
           agro: 1.8
           amat: 1.0
           aold: 1.05
-          default_aef: 4.42514e-14
-        OCIM:  # t-beta-ocimene: 79.87 ug m-2 h-1
+        OCIM:  # t-beta-ocimene
           ldf: 0.8
           ct1: 80.0
           cleo: 1.83
@@ -121,8 +113,7 @@ physics_schemes:
           agro: 1.8
           amat: 1.0
           aold: 1.05
-          default_aef: 9.419649e-14
-        OMON:  # other monoterpenes: 114.67 ug m-2 h-1
+        OMON:  # other monoterpenes
           ldf: 0.4
           ct1: 80.0
           cleo: 1.83
@@ -131,7 +122,6 @@ physics_schemes:
           agro: 1.8
           amat: 1.0
           aold: 1.05
-          default_aef: 1.3798347e-13
 
 cece_data:
   streams:
@@ -153,25 +143,22 @@ cece_data:
       variables:
         - { file: LAI, model: leaf_area_index }
         - { file: LAI_PREV, model: leaf_area_index_prev }
-    - name: MEGAN_ISOP_AEF
-      file: "/path/to/megan_isop_aef_4x5_20210620.nc"
+    # Gridded per-class AEFs [kmol compound m-2 s-1]. The model name must be
+    # AEF_<CLASS> for each class listed under emission_classes.
+    - name: MEGAN_AEF
+      file: "/path/to/megan_aef_4x5.nc"
       mapalgo: passthrough
       data_model: auto
       variables:
         - { file: AEF_ISOP, model: AEF_ISOP }
-    # Optional gridded explicit-compound AEFs [kmol compound m-2 s-1]:
-    # - name: MEGAN_TERP_AEF
-    #   file: "/path/to/megan_terp_aef_4x5.nc"
-    #   mapalgo: passthrough
-    #   data_model: auto
-    #   variables:
-    #     - { file: AEF_APIN, model: AEF_APIN }
-    #     - { file: AEF_BPIN, model: AEF_BPIN }
-    #     - { file: AEF_SABI, model: AEF_SABI }
-    #     - { file: AEF_CARE, model: AEF_CARE }
-    #     - { file: AEF_LIMO, model: AEF_LIMO }
-    #     - { file: AEF_MYRC, model: AEF_MYRC }
-    #     - { file: AEF_OCIM, model: AEF_OCIM }
+        - { file: AEF_APIN, model: AEF_APIN }
+        - { file: AEF_BPIN, model: AEF_BPIN }
+        - { file: AEF_SABI, model: AEF_SABI }
+        - { file: AEF_CARE, model: AEF_CARE }
+        - { file: AEF_LIMO, model: AEF_LIMO }
+        - { file: AEF_MYRC, model: AEF_MYRC }
+        - { file: AEF_OCIM, model: AEF_OCIM }
+        - { file: AEF_OMON, model: AEF_OMON }
 
 output:
   enabled: true
